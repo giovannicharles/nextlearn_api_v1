@@ -1,0 +1,166 @@
+const documentService = require('./document.service');
+const fileStorageService = require('./file-storage.service');
+
+class DocumentController {
+    
+    async uploadFile(req, res) {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ error: 'Aucun fichier fourni' });
+            }
+
+            const subPath = req.body.subPath || 'documents';
+            const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
+            
+            const fileUrl = await documentService.storeFileAndGetUrl(
+                req.file, 
+                subPath, 
+                serverBaseUrl
+            );
+
+            res.json({
+                success: true,
+                fileUrl,
+                storagePath: req.file.path,
+                filename: req.file.filename
+            });
+        } catch (error) {
+            console.error('Erreur upload:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async createDocument(req, res) {
+        try {
+            const documentData = req.body;
+            
+            // Si un fichier a été uploadé, ajouter les chemins
+            if (req.file) {
+                const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
+                documentData.fileUrl = await documentService.storeFileAndGetUrl(
+                    req.file,
+                    documentData.subPath || 'documents',
+                    serverBaseUrl
+                );
+                documentData.storagePath = req.file.path;
+            }
+
+            const document = await documentService.saveDocument(documentData);
+            res.status(201).json(document);
+        } catch (error) {
+            console.error('Erreur création document:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async getAllDocuments(req, res) {
+        try {
+            const documents = await documentService.findAll();
+            res.json(documents);
+        } catch (error) {
+            console.error('Erreur récupération documents:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async getDocumentById(req, res) {
+        try {
+            const document = await documentService.findById(req.params.id);
+            if (!document) {
+                return res.status(404).json({ error: 'Document non trouvé' });
+            }
+            res.json(document);
+        } catch (error) {
+            console.error('Erreur récupération document:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async deleteDocument(req, res) {
+        try {
+            const result = await documentService.delete(req.params.id);
+            if (!result) {
+                return res.status(404).json({ error: 'Document non trouvé' });
+            }
+            res.json({ message: 'Document supprimé avec succès' });
+        } catch (error) {
+            console.error('Erreur suppression document:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async getDocumentsBySubject(req, res) {
+        try {
+            const documents = await documentService.findBySubject(req.params.subject);
+            res.json(documents);
+        } catch (error) {
+            console.error('Erreur récupération documents par matière:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async getDocumentsForCriteria(req, res) {
+        try {
+            const documents = await documentService.getDocumentsForCriteria(req.body);
+            res.json(documents);
+        } catch (error) {
+            console.error('Erreur récupération documents par critères:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async extractText(req, res) {
+        try {
+            const { documentIds } = req.body;
+            
+            if (!documentIds || !documentIds.length) {
+                return res.status(400).json({ error: 'Liste de documents requise' });
+            }
+
+            const documents = await Document.find({ _id: { $in: documentIds } });
+            const text = await documentService.extractTextFromDocuments(documents);
+            
+            res.json({ text });
+        } catch (error) {
+            console.error('Erreur extraction texte:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async fixPaths(req, res) {
+        try {
+            const updates = await documentService.fixDocumentPaths();
+            res.json({
+                message: 'Correction des chemins terminée',
+                updates
+            });
+        } catch (error) {
+            console.error('Erreur correction chemins:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+     async downloadFile(req, res) {
+        try {
+            // Avec router *, req.params[0] contient tout ce qui suit /download/
+            const filePath = req.params[0];
+            if (!filePath) {
+                return res.status(400).json({ error: 'Chemin du fichier manquant' });
+            }
+
+            const fullPath = path.join(fileStorageService.getFileStorageLocation(), filePath);
+
+            res.download(fullPath, (err) => {
+                if (err) {
+                    console.error('Erreur téléchargement:', err);
+                    res.status(500).json({ error: 'Erreur lors du téléchargement' });
+                }
+            });
+        } catch (error) {
+            console.error('Erreur téléchargement:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+}
+
+module.exports = new DocumentController();
