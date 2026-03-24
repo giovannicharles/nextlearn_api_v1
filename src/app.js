@@ -11,6 +11,15 @@ const documentRoutes = require('./modules/document/document.routes');
 const app = express();
 const setupSwagger = require('./swagger');
 
+// ===== Middleware pour forcer HTTPS en production =====
+app.use((req, res, next) => {
+    // Forcer HTTPS sur Render
+    if (process.env.NODE_ENV === 'production' && req.headers['x-forwarded-proto'] !== 'https') {
+        return res.redirect(`https://${req.headers.host}${req.url}`);
+    }
+    next();
+});
+
 // ===== Configuration CORS =====
 const corsOptions = {
     origin: function (origin, callback) {
@@ -27,7 +36,6 @@ const corsOptions = {
             'http://localhost',
             'https://localhost',
             'file://',
-            'https://nextlearn-api-v1.onrender.com',
             'https://nextlearn-api-v1.onrender.com'
         ];
 
@@ -68,19 +76,15 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ===== Statics avec en-têtes CORS pour les fichiers =====
-// Pour Render, utiliser /tmp/uploads
+// ===== Statics avec en-têtes CORS =====
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
 
-// Servir les fichiers statiques avec en-têtes CORS
 app.use('/uploads', express.static(uploadDir, {
     setHeaders: (res, filePath) => {
-        // Ajouter les en-têtes CORS pour permettre l'accès depuis le frontend
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        console.log(`📁 Fichier servi: ${filePath}`);
     }
 }));
 
@@ -93,7 +97,7 @@ const connectDB = async () => {
         const mongoURI = process.env.MONGODB_URI;
         
         if (!mongoURI) {
-            console.error('❌ MONGODB_URI non définie dans les variables d\'environnement');
+            console.error('❌ MONGODB_URI non définie');
             return;
         }
 
@@ -109,7 +113,7 @@ const connectDB = async () => {
         console.log('✅ Connexion MongoDB établie avec succès');
         
         mongoose.connection.on('disconnected', () => {
-            console.log('⚠️ MongoDB déconnecté. Reconnexion dans 5 secondes...');
+            console.log('⚠️ MongoDB déconnecté. Reconnexion...');
             setTimeout(connectDB, 5000);
         });
 
@@ -160,14 +164,12 @@ app.get('/', (req, res) => {
 // ===== Gestion des uploads =====
 app.get('/api/uploads/list', (req, res) => {
     const fs = require('fs');
-    const fsPromises = fs.promises;
-    const uploadDirectory = uploadDir;
 
-    fs.readdir(uploadDirectory, { withFileTypes: true }, (err, files) => {
+    fs.readdir(uploadDir, { withFileTypes: true }, (err, files) => {
         if (err) return res.status(500).json({ error: 'Impossible de lister les fichiers' });
 
         const result = files.map(file => {
-            const filePath = path.join(uploadDirectory, file.name);
+            const filePath = path.join(uploadDir, file.name);
             let stats = {};
             try { stats = fs.statSync(filePath); } catch (e) {}
             return { name: file.name, isDirectory: file.isDirectory(), size: stats.size, modified: stats.mtime };

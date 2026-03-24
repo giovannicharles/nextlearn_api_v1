@@ -1,4 +1,3 @@
-// document.service.js
 const Document = require('./document.model');
 const fileStorageService = require('./file-storage.service');
 const pdfParse = require('pdf-parse');
@@ -7,12 +6,8 @@ const path = require('path');
 
 class DocumentService {
 
-    /**
-     * Sauvegarder un document en base de données
-     */
     async saveDocument(documentData) {
         try {
-            // Parser les tags si c'est une chaîne JSON
             if (typeof documentData.tags === 'string') {
                 try {
                     documentData.tags = JSON.parse(documentData.tags);
@@ -28,9 +23,6 @@ class DocumentService {
         }
     }
 
-    /**
-     * Récupérer tous les documents (triés par level puis subject)
-     */
     async findAll(filters = {}) {
         try {
             const query = { visibility: 'public', ...filters };
@@ -42,9 +34,6 @@ class DocumentService {
         }
     }
 
-    /**
-     * Récupérer un document par ID
-     */
     async findById(id) {
         try {
             return await Document.findById(id).lean();
@@ -53,9 +42,6 @@ class DocumentService {
         }
     }
 
-    /**
-     * Récupérer les documents par matière
-     */
     async findBySubject(subject) {
         try {
             return await Document.find({ subject, visibility: 'public' })
@@ -66,9 +52,6 @@ class DocumentService {
         }
     }
 
-    /**
-     * Récupérer les documents par level
-     */
     async findByLevel(level) {
         try {
             return await Document.find({ level, visibility: 'public' })
@@ -79,9 +62,6 @@ class DocumentService {
         }
     }
 
-    /**
-     * Filtrer les documents par critères
-     */
     async getDocumentsForCriteria(criteria) {
         try {
             const query = { visibility: 'public' };
@@ -110,9 +90,6 @@ class DocumentService {
         }
     }
 
-    /**
-     * Supprimer un document
-     */
     async delete(id) {
         try {
             const doc = await Document.findByIdAndDelete(id);
@@ -125,21 +102,20 @@ class DocumentService {
         }
     }
 
-    /**
-     * Stocker un fichier et retourner l'URL
-     */
     async storeFileAndGetUrl(file, subPath, serverBaseUrl) {
         try {
             const storagePath = await fileStorageService.storeFile(file, subPath);
-            return `${serverBaseUrl}/uploads/${storagePath}`;
+            let url = `${serverBaseUrl}/uploads/${storagePath}`;
+            // CORRECTION: Forcer HTTPS en production
+            if (process.env.NODE_ENV === 'production') {
+                url = url.replace(/^http:/, 'https:');
+            }
+            return url;
         } catch (error) {
             throw new Error(`Impossible de stocker le fichier: ${error.message}`);
         }
     }
 
-    /**
-     * Extraire le texte d'un ensemble de documents
-     */
     async extractTextFromDocuments(documents) {
         const texts = [];
 
@@ -159,9 +135,6 @@ class DocumentService {
         return texts.join('\n\n');
     }
 
-    /**
-     * Corriger les chemins des anciens documents
-     */
     async fixDocumentPaths() {
         const docs = await Document.find({ storagePath: { $exists: true } });
         const updates = [];
@@ -177,9 +150,6 @@ class DocumentService {
         return updates;
     }
 
-    /**
-     * Statistiques groupées par level
-     */
     async getStatsByLevel() {
         return await Document.aggregate([
             { $group: { _id: '$level', count: { $sum: 1 } } },

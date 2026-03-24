@@ -1,4 +1,3 @@
-// document.controller.js
 const documentService = require('./document.service');
 const fileStorageService = require('./file-storage.service');
 const Document = require('./document.model');
@@ -13,7 +12,8 @@ class DocumentController {
             }
 
             const subPath = req.body.subPath || 'documents';
-            const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
+            const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+            const serverBaseUrl = `${protocol}://${req.get('host')}`;
 
             const fileUrl = await documentService.storeFileAndGetUrl(
                 req.file,
@@ -44,15 +44,19 @@ class DocumentController {
                 return res.status(400).json({ error: 'Aucun fichier fourni' });
             }
 
-            const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
-            documentData.fileUrl = await documentService.storeFileAndGetUrl(
+            // CORRECTION: Forcer HTTPS en production
+            const protocol = process.env.NODE_ENV === 'production' ? 'https' : req.protocol;
+            const serverBaseUrl = `${protocol}://${req.get('host')}`;
+            
+            const fileUrl = await documentService.storeFileAndGetUrl(
                 req.file,
                 documentData.subPath || 'documents',
                 serverBaseUrl
             );
+            
+            documentData.fileUrl = fileUrl;
             documentData.storagePath = req.file.path;
 
-            // Vérifier les champs obligatoires (y compris level)
             if (!documentData.title || !documentData.type || !documentData.subject || !documentData.year || !documentData.level) {
                 return res.status(400).json({
                     error: 'Champs obligatoires manquants: title, type, subject, year, level'
@@ -70,7 +74,6 @@ class DocumentController {
 
     async getAllDocuments(req, res) {
         try {
-            // Accepter des filtres via query params
             const filters = {};
             if (req.query.level) filters.level = req.query.level;
             if (req.query.type) filters.type = req.query.type;
