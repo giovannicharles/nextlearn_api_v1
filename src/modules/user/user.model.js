@@ -1,103 +1,67 @@
-const mongoose= require('mongoose');
-const bcrypt= require('bcryptjs');
+// user.model.js
+const mongoose = require('mongoose');
+const { userRole } = require('./user.enum');
 
-const {role, userRole, userClasse} = require('./user.enum');
+const userSchema = new mongoose.Schema({
+    nom: { 
+        type: String, 
+        required: true 
+    },
+    prenom: { 
+        type: String, 
+        required: true 
+    },
+    email: { 
+        type: String, 
+        required: true, 
+        unique: true,
+        lowercase: true 
+    },
+    password: { 
+        type: String, 
+        required: true,
+        select: true // Force la sélection par défaut
+    },
+    role: { 
+        type: String, 
+        enum: Object.values(userRole), 
+        default: userRole.student 
+    },
+    classe: { 
+        type: String,
+        default: '' 
+    },
+    filiere: { 
+        type: String,
+        default: '' 
+    },
+    isEmailVerified: { 
+        type: Boolean, 
+        default: false 
+    },
+    twoFactorEnabled: { 
+        type: Boolean, 
+        default: false 
+    }
+}, {
+    timestamps: true, // Ajoute createdAt et updatedAt automatiquement
+    toJSON: {
+        transform: function(doc, ret) {
+            delete ret.password; // Supprime le mot de passe à la conversion JSON
+            delete ret.__v;
+            return ret;
+        }
+    },
+    toObject: {
+        transform: function(doc, ret) {
+            delete ret.password;
+            delete ret.__v;
+            return ret;
+        }
+    }
+});
 
-const userSchema = new mongoose.Schema(
-    {
-        nom:{
-            type: String,
-            required: [true, 'Le nom est requis'],
-            trim: true,
-            maxlength: [50, 'Le nom ne peut pas dépasser 50 caractères.']
-        },
-        prenom: {
-            type: String,
-            required: [true, 'Le nom est requis.'],
-            trim: true,
-            maxlength: [50, 'Le prenom ne peut pas dépasser 50 caractères.']
-        },
-        email: {
-            type: String,
-            required: [true, 'L\' email est requis.'],
-            unique: true,
-            lowercase: true,
-            trim:true,
-            match: [
-                /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-                'Veuillez fournir un email valide'
-            ]
-        },
-        role: {
-            type: String,
-            enum: Object.values(userRole),
-            default: userRole.student
-        },
-        classe: {
-            type: String,
-            enum: Object.values(userClasse)
-        },
-        filiere: String
-        ,
-        lastLogin: {
-    type: Date
-  },
-  loginCount: {
-    type: Number,
-    default: 0
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-   emailNotifications: {
-    type: Boolean,
-    default: true
-  },
-  pushNotifications: {
-    type: Boolean,
-    default: true
-  },twoFactorEnabled: {
-    type: Boolean,
-    default: false
-  },
-  twoFactorSecret: {
-    type: String,
-    select: false
-  },
-  twoFactorCode: {
-    type: String,
-    select: false
-  },
-  twoFactorCodeExpires: {
-    type: Date,
-    select: false
-  },
-  
-  isEmailVerified: {
-    type: Boolean,
-    default: false
-  },
-  emailVerificationToken: {
-    type: String,
-    select: false
-  },
-  emailVerificationExpires: {
-    type: Date,
-    select: false
-  },
-  
-  resetPasswordToken: {
-    type: String,
-    select: false
-  },
-  resetPasswordExpires: {
-    type: Date,
-    select: false
-  },},
-  {
-    timestamps: true
-  }
-);
+// NE PAS ajouter de middleware 'pre' ou 'post' qui supprime le mot de passe
 
-module.exports= mongoose.model('User', userSchema);
+const User = mongoose.model('User', userSchema);
+module.exports = User;

@@ -1,14 +1,12 @@
-// src/app.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 // Import des routes
 const authRoutes = require('./modules/auth/auth.routes');
 const documentRoutes = require('./modules/document/document.routes');
-// const userRoutes = require('./modules/user/user.routes');
-// const quizRoutes = require('./modules/quiz/quiz.routes');
 
 const app = express();
 const setupSwagger = require('./swagger');
@@ -50,15 +48,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// ===== Middlewares =====
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Statics
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/public', express.static(path.join(__dirname, 'public')));
-
-// Logger simple
+// ===== Logger simple =====
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     const start = Date.now();
@@ -73,11 +63,60 @@ app.use((req, res, next) => {
     next();
 });
 
+// ===== Middlewares =====
+// IMPORTANT: express.json() est nécessaire pour les routes d'authentification
+app.use(express.json({ limit: '50mb' }));
+
+// Parser URL-encoded pour les formulaires classiques
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Statics
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/public', express.static(path.join(__dirname, 'public')));
+setupSwagger(app);
+
+// ===== Connexion MongoDB =====
+const connectDB = async () => {
+    try {
+        const mongoURI = process.env.MONGODB_URI;
+        
+        if (!mongoURI) {
+            console.error('❌ MONGODB_URI non définie dans les variables d\'environnement');
+            return;
+        }
+
+        console.log('📡 Tentative de connexion à MongoDB...');
+
+        const options = {
+            serverSelectionTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
+            family: 4,
+        };
+
+        await mongoose.connect(mongoURI, options);
+        console.log('✅ Connexion MongoDB établie avec succès');
+        
+        mongoose.connection.on('disconnected', () => {
+            console.log('⚠️ MongoDB déconnecté. Reconnexion dans 5 secondes...');
+            setTimeout(connectDB, 5000);
+        });
+
+        mongoose.connection.on('error', (err) => {
+            console.error('❌ Erreur MongoDB:', err.message);
+        });
+
+    } catch (error) {
+        console.error('❌ Erreur de connexion MongoDB:', error.message);
+        console.log('🔄 Nouvelle tentative dans 5 secondes...');
+        setTimeout(connectDB, 5000);
+    }
+};
+
+connectDB();
+
 // ===== Routes =====
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
-// app.use('/api/users', userRoutes);
-// app.use('/api/quizzes', quizRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -85,7 +124,7 @@ app.get('/health', (req, res) => {
         status: 'OK',
         timestamp: new Date(),
         environment: process.env.NODE_ENV || 'development',
-        mongodb: 'connexion gérée ailleurs',
+        mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         cors: 'configuré',
         uploadDir: process.env.UPLOAD_DIR || 'uploads'
     });
@@ -107,6 +146,8 @@ app.get('/', (req, res) => {
 });
 
 // ===== Gestion des uploads =====
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
+
 app.get('/api/uploads/list', (req, res) => {
     const fs = require('fs');
     const uploadDir = path.join(__dirname, '../uploads');
@@ -122,17 +163,6 @@ app.get('/api/uploads/list', (req, res) => {
         });
 
         res.json(result);
-    });
-});
-
-app.get('/api/uploads/', (req, res) => {
-    const filePath = req.params[0];
-    const fullPath = path.join(__dirname, '../uploads', filePath);
-    res.sendFile(fullPath, (err) => {
-        if (err) {
-            console.error('Erreur envoi fichier:', err);
-            res.status(404).json({ error: 'Fichier non trouvé' });
-        }
     });
 });
 

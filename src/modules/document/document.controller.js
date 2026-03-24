@@ -1,8 +1,11 @@
+// document.controller.js
 const documentService = require('./document.service');
 const fileStorageService = require('./file-storage.service');
+const Document = require('./document.model');
+const path = require('path');
 
 class DocumentController {
-    
+
     async uploadFile(req, res) {
         try {
             if (!req.file) {
@@ -11,10 +14,10 @@ class DocumentController {
 
             const subPath = req.body.subPath || 'documents';
             const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
-            
+
             const fileUrl = await documentService.storeFileAndGetUrl(
-                req.file, 
-                subPath, 
+                req.file,
+                subPath,
                 serverBaseUrl
             );
 
@@ -32,21 +35,33 @@ class DocumentController {
 
     async createDocument(req, res) {
         try {
-            const documentData = req.body;
-            
-            // Si un fichier a été uploadé, ajouter les chemins
-            if (req.file) {
-                const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
-                documentData.fileUrl = await documentService.storeFileAndGetUrl(
-                    req.file,
-                    documentData.subPath || 'documents',
-                    serverBaseUrl
-                );
-                documentData.storagePath = req.file.path;
+            console.log('📝 Création document - Body:', req.body);
+            console.log('📁 Fichier reçu:', req.file ? req.file.originalname : 'AUCUN');
+
+            const documentData = { ...req.body };
+
+            if (!req.file) {
+                return res.status(400).json({ error: 'Aucun fichier fourni' });
+            }
+
+            const serverBaseUrl = `${req.protocol}://${req.get('host')}`;
+            documentData.fileUrl = await documentService.storeFileAndGetUrl(
+                req.file,
+                documentData.subPath || 'documents',
+                serverBaseUrl
+            );
+            documentData.storagePath = req.file.path;
+
+            // Vérifier les champs obligatoires (y compris level)
+            if (!documentData.title || !documentData.type || !documentData.subject || !documentData.year || !documentData.level) {
+                return res.status(400).json({
+                    error: 'Champs obligatoires manquants: title, type, subject, year, level'
+                });
             }
 
             const document = await documentService.saveDocument(documentData);
             res.status(201).json(document);
+
         } catch (error) {
             console.error('Erreur création document:', error);
             res.status(500).json({ error: error.message });
@@ -55,7 +70,13 @@ class DocumentController {
 
     async getAllDocuments(req, res) {
         try {
-            const documents = await documentService.findAll();
+            // Accepter des filtres via query params
+            const filters = {};
+            if (req.query.level) filters.level = req.query.level;
+            if (req.query.type) filters.type = req.query.type;
+            if (req.query.subject) filters.subject = req.query.subject;
+
+            const documents = await documentService.findAll(filters);
             res.json(documents);
         } catch (error) {
             console.error('Erreur récupération documents:', error);
@@ -99,6 +120,16 @@ class DocumentController {
         }
     }
 
+    async getDocumentsByLevel(req, res) {
+        try {
+            const documents = await documentService.findByLevel(req.params.level);
+            res.json(documents);
+        } catch (error) {
+            console.error('Erreur récupération documents par niveau:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
     async getDocumentsForCriteria(req, res) {
         try {
             const documents = await documentService.getDocumentsForCriteria(req.body);
@@ -109,17 +140,26 @@ class DocumentController {
         }
     }
 
+    async getStatsByLevel(req, res) {
+        try {
+            const stats = await documentService.getStatsByLevel();
+            res.json(stats);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+
     async extractText(req, res) {
         try {
             const { documentIds } = req.body;
-            
+
             if (!documentIds || !documentIds.length) {
                 return res.status(400).json({ error: 'Liste de documents requise' });
             }
 
             const documents = await Document.find({ _id: { $in: documentIds } });
             const text = await documentService.extractTextFromDocuments(documents);
-            
+
             res.json({ text });
         } catch (error) {
             console.error('Erreur extraction texte:', error);
@@ -130,19 +170,14 @@ class DocumentController {
     async fixPaths(req, res) {
         try {
             const updates = await documentService.fixDocumentPaths();
-            res.json({
-                message: 'Correction des chemins terminée',
-                updates
-            });
+            res.json({ message: 'Correction des chemins terminée', updates });
         } catch (error) {
-            console.error('Erreur correction chemins:', error);
             res.status(500).json({ error: error.message });
         }
     }
 
-     async downloadFile(req, res) {
+    async downloadFile(req, res) {
         try {
-            // Avec router *, req.params[0] contient tout ce qui suit /download/
             const filePath = req.params[0];
             if (!filePath) {
                 return res.status(400).json({ error: 'Chemin du fichier manquant' });
@@ -157,7 +192,6 @@ class DocumentController {
                 }
             });
         } catch (error) {
-            console.error('Erreur téléchargement:', error);
             res.status(500).json({ error: error.message });
         }
     }

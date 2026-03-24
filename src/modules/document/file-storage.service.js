@@ -12,11 +12,9 @@ class FileStorageService {
 
     async init() {
         try {
-            // Créer le répertoire s'il n'existe pas
             await fs.mkdir(this.fileStorageLocation, { recursive: true });
             console.log(`✅ Répertoire de stockage: ${this.fileStorageLocation}`);
 
-            // Vérifier les permissions
             await fs.access(this.fileStorageLocation, fs.constants.W_OK);
             console.log('✅ Permissions d\'écriture OK');
             
@@ -32,29 +30,34 @@ class FileStorageService {
         return this.fileStorageLocation;
     }
 
-    // Configuration de multer pour l'upload
+    // Configuration de multer pour l'upload (inspirée de course-imports)
     getMulterConfig() {
+        // Utiliser diskStorage comme avant
         const storage = multer.diskStorage({
             destination: async (req, file, cb) => {
                 try {
                     const subPath = req.body.subPath || 'documents';
                     const uploadPath = path.join(this.fileStorageLocation, subPath);
                     await fs.mkdir(uploadPath, { recursive: true });
+                    console.log(`📁 Destination upload: ${uploadPath}`);
                     cb(null, uploadPath);
                 } catch (error) {
+                    console.error('❌ Erreur destination:', error);
                     cb(error, null);
                 }
             },
             filename: (req, file, cb) => {
-                // Générer un nom unique
                 const uniqueSuffix = crypto.randomBytes(16).toString('hex');
                 const extension = path.extname(file.originalname);
-                cb(null, `${uniqueSuffix}${extension}`);
+                const filename = `${uniqueSuffix}${extension}`;
+                console.log(`📁 Nom fichier généré: ${filename}`);
+                cb(null, filename);
             }
         });
 
         const fileFilter = (req, file, cb) => {
-            // Types de fichiers autorisés
+            console.log(`🔍 Fichier reçu: ${file.originalname} (${file.mimetype})`);
+            
             const allowedTypes = [
                 'application/pdf',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -64,8 +67,10 @@ class FileStorageService {
             ];
 
             if (allowedTypes.includes(file.mimetype)) {
+                console.log('✅ Type accepté');
                 cb(null, true);
             } else {
+                console.log('❌ Type refusé');
                 cb(new Error('Type de fichier non supporté. Seuls PDF, DOCX et TXT sont acceptés.'), false);
             }
         };
@@ -74,22 +79,14 @@ class FileStorageService {
             fileSize: 50 * 1024 * 1024 // 50MB max
         };
 
-        return multer({ 
-            storage, 
-            fileFilter,
-            limits 
-        });
+        return multer({ storage, fileFilter, limits });
     }
 
     async storeFile(file, subPath) {
         try {
-            if (!file) {
-                throw new Error('Aucun fichier fourni');
-            }
-
-            // Le fichier est déjà sauvegardé par multer, on retourne juste le chemin relatif
+            if (!file) throw new Error('Aucun fichier fourni');
             const relativePath = path.relative(this.fileStorageLocation, file.path);
-            return relativePath.replace(/\\/g, '/'); // Normaliser les chemins Windows
+            return relativePath.replace(/\\/g, '/');
         } catch (error) {
             throw new Error(`Impossible de stocker le fichier: ${error.message}`);
         }

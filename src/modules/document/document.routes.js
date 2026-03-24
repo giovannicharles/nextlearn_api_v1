@@ -1,51 +1,64 @@
-// src/modules/document/document.routes.js
+// document.routes.js
 const express = require('express');
 const router = express.Router();
 const documentController = require('./document.controller');
 const fileStorageService = require('./file-storage.service');
 const authMiddleware = require('../../middleware/auth.middleware');
 
-// Configuration de multer pour l'upload
 const upload = fileStorageService.getMulterConfig();
 
-// ===== Routes publiques =====
-router.get('/', documentController.getAllDocuments);
-router.get('/:id', documentController.getDocumentById);
-router.get('/subject/:subject', documentController.getDocumentsBySubject);
-router.post('/criteria', documentController.getDocumentsForCriteria);
+console.log('✅ Document routes chargées');
 
-// ===== Routes protégées (authentification) =====
-router.post('/upload', 
+// ===== ROUTES PUBLIQUES =====
+router.get('/', documentController.getAllDocuments.bind(documentController));
+router.get('/stats/level', documentController.getStatsByLevel.bind(documentController));
+router.get('/subject/:subject', documentController.getDocumentsBySubject.bind(documentController));
+router.get('/level/:level', documentController.getDocumentsByLevel.bind(documentController));
+router.get('/:id', documentController.getDocumentById.bind(documentController));
+
+// ===== ROUTES PROTÉGÉES (filtre par critères) =====
+router.post('/criteria',
     authMiddleware.verifyToken,
-    upload.single('file'), 
-    documentController.uploadFile
+    documentController.getDocumentsForCriteria.bind(documentController)
 );
 
-router.post('/', 
-    authMiddleware.verifyToken,
-    upload.single('file'),
-    documentController.createDocument
-);
-
-router.delete('/:id', 
-    authMiddleware.verifyToken,
-    documentController.deleteDocument
-);
-
-router.post('/extract/text', 
-    authMiddleware.verifyToken,
-    documentController.extractText
-);
-
-// ===== Route admin =====
-router.post('/admin/fix-paths', 
+// ===== ROUTES ADMIN =====
+router.post('/',
     authMiddleware.verifyToken,
     authMiddleware.isAdmin,
-    documentController.fixPaths
+    upload.single('file'),
+    documentController.createDocument.bind(documentController)
 );
 
-// ===== Route téléchargement corrigée =====
-// Utiliser un wildcard * pour router minimaliste
-router.get('/download/', documentController.downloadFile);
+router.post('/upload',
+    authMiddleware.verifyToken,
+    authMiddleware.isAdmin,
+    upload.single('file'),
+    documentController.uploadFile.bind(documentController)
+);
+
+router.delete('/:id',
+    authMiddleware.verifyToken,
+    authMiddleware.isAdmin,
+    documentController.deleteDocument.bind(documentController)
+);
+
+// ===== ROUTE DOWNLOAD =====
+router.get('/download/',
+    authMiddleware.verifyToken,
+    documentController.downloadFile.bind(documentController)
+);
+
+// ===== ROUTES UTILITAIRES =====
+router.post('/extract-text',
+    authMiddleware.verifyToken,
+    documentController.extractText.bind(documentController)
+);
+
+router.post('/fix-paths',
+    authMiddleware.verifyToken,
+    authMiddleware.isAdmin,
+    documentController.fixPaths.bind(documentController)
+);
 
 module.exports = router;
