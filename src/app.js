@@ -27,6 +27,7 @@ const corsOptions = {
             'http://localhost',
             'https://localhost',
             'file://',
+            'https://nextlearn-api-v1.onrender.com',
             'https://nextlearn-api-v1.onrender.com'
         ];
 
@@ -42,9 +43,9 @@ const corsOptions = {
     },
     credentials: true,
     optionsSuccessStatus: 200,
-    methods: ['GET','POST','PUT','DELETE','OPTIONS','PATCH'],
-    allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Accept','Origin'],
-    exposedHeaders: ['Content-Length','Content-Type','Authorization']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Content-Length', 'Content-Type', 'Authorization']
 };
 app.use(cors(corsOptions));
 
@@ -64,14 +65,25 @@ app.use((req, res, next) => {
 });
 
 // ===== Middlewares =====
-// IMPORTANT: express.json() est nécessaire pour les routes d'authentification
 app.use(express.json({ limit: '50mb' }));
-
-// Parser URL-encoded pour les formulaires classiques
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Statics
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// ===== Statics avec en-têtes CORS pour les fichiers =====
+// Pour Render, utiliser /tmp/uploads
+const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
+
+// Servir les fichiers statiques avec en-têtes CORS
+app.use('/uploads', express.static(uploadDir, {
+    setHeaders: (res, filePath) => {
+        // Ajouter les en-têtes CORS pour permettre l'accès depuis le frontend
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        console.log(`📁 Fichier servi: ${filePath}`);
+    }
+}));
+
 app.use('/public', express.static(path.join(__dirname, 'public')));
 setupSwagger(app);
 
@@ -146,17 +158,16 @@ app.get('/', (req, res) => {
 });
 
 // ===== Gestion des uploads =====
-app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
-
 app.get('/api/uploads/list', (req, res) => {
     const fs = require('fs');
-    const uploadDir = path.join(__dirname, '../uploads');
+    const fsPromises = fs.promises;
+    const uploadDirectory = uploadDir;
 
-    fs.readdir(uploadDir, { withFileTypes: true }, (err, files) => {
+    fs.readdir(uploadDirectory, { withFileTypes: true }, (err, files) => {
         if (err) return res.status(500).json({ error: 'Impossible de lister les fichiers' });
 
         const result = files.map(file => {
-            const filePath = path.join(uploadDir, file.name);
+            const filePath = path.join(uploadDirectory, file.name);
             let stats = {};
             try { stats = fs.statSync(filePath); } catch (e) {}
             return { name: file.name, isDirectory: file.isDirectory(), size: stats.size, modified: stats.mtime };
@@ -185,9 +196,9 @@ app.use((err, req, res, next) => {
 // ===== Initialisation des dossiers =====
 const fs = require('fs');
 const dirs = [
-    path.join(__dirname, '../uploads'),
-    path.join(__dirname, '../uploads/documents'),
-    path.join(__dirname, '../uploads/temp'),
+    uploadDir,
+    path.join(uploadDir, 'documents'),
+    path.join(uploadDir, 'temp'),
     path.join(__dirname, '../logs')
 ];
 
