@@ -11,15 +11,6 @@ const documentRoutes = require('./modules/document/document.routes');
 const app = express();
 const setupSwagger = require('./swagger');
 
-// ===== Middleware pour forcer HTTPS en production =====
-app.use((req, res, next) => {
-    // Forcer HTTPS sur Render
-    if (process.env.NODE_ENV === 'production' && req.headers['x-forwarded-proto'] !== 'https') {
-        return res.redirect(`https://${req.headers.host}${req.url}`);
-    }
-    next();
-});
-
 // ===== Configuration CORS =====
 const corsOptions = {
     origin: function (origin, callback) {
@@ -57,6 +48,20 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
+// ===== Middleware pour forcer HTTPS - MAIS IGNORER LES REQUÊTES OPTIONS =====
+app.use((req, res, next) => {
+    // Ne pas rediriger les requêtes OPTIONS (preflight)
+    if (req.method === 'OPTIONS') {
+        return next();
+    }
+    
+    // Forcer HTTPS sur Render
+    if (process.env.NODE_ENV === 'production' && req.headers['x-forwarded-proto'] !== 'https') {
+        return res.redirect(`https://${req.headers.host}${req.url}`);
+    }
+    next();
+});
+
 // ===== Logger simple =====
 app.use((req, res, next) => {
     const origin = req.headers.origin;
@@ -68,7 +73,6 @@ app.use((req, res, next) => {
         console.log(`📤 [${new Date().toISOString()}] ${req.method} ${req.path} - ${res.statusCode} - ${Date.now() - start}ms`);
     });
 
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
 });
 

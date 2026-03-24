@@ -105,8 +105,15 @@ class DocumentService {
     async storeFileAndGetUrl(file, subPath, serverBaseUrl) {
         try {
             const storagePath = await fileStorageService.storeFile(file, subPath);
+            
+            // Si c'est une URL Cloudinary, la retourner directement
+            if (storagePath.startsWith('http://') || storagePath.startsWith('https://')) {
+                console.log(`☁️ URL Cloudinary: ${storagePath}`);
+                return storagePath;
+            }
+            
+            // Sinon, construire l'URL locale
             let url = `${serverBaseUrl}/uploads/${storagePath}`;
-            // CORRECTION: Forcer HTTPS en production
             if (process.env.NODE_ENV === 'production') {
                 url = url.replace(/^http:/, 'https:');
             }
@@ -122,8 +129,8 @@ class DocumentService {
         for (const doc of documents) {
             try {
                 if (doc.storagePath) {
-                    const fullPath = path.join(fileStorageService.getFileStorageLocation(), doc.storagePath);
-                    const buffer = await fs.readFile(fullPath);
+                    // Utiliser fileStorageService pour récupérer le fichier (supporte Cloudinary)
+                    const buffer = await fileStorageService.getFileStream(doc.storagePath);
                     const pdfData = await pdfParse(buffer);
                     texts.push(`--- ${doc.title} (${doc.subject}, ${doc.level}) ---\n${pdfData.text}`);
                 }
