@@ -1,8 +1,25 @@
-const express= require('express');
-const router= express.Router();
-const authController= require('./auth.controller');
+// src/modules/auth/auth.routes.js
+const express = require('express');
+const router  = express.Router();
+const authController  = require('./auth.controller');
+const authMiddleware  = require('../../middleware/auth.middleware');
 
-router.post('/register', authController.register);
-router.post('/login', authController.login);
+// ── Routes publiques ──────────────────────────────────────────
+router.post('/register',          authController.register);
+router.post('/login',             authController.login);
+router.post('/refresh-token',     authController.refreshToken);
+router.post('/2fa/verify-login',  authController.verifyLoginTwoFactor);
+router.post('/forgot-password',   authController.forgotPassword);
+router.post('/reset-password',    authController.resetPassword);
+router.get('/verify-email/:token', authController.verifyEmail);
 
-module.exports= router;
+// ── Routes protégées ──────────────────────────────────────────
+router.get('/validate-token',    authMiddleware.verifyToken, authController.validateToken);
+router.get('/profile',           authMiddleware.verifyToken, authController.getProfile);
+router.put('/profile',           authMiddleware.verifyToken, authController.updateProfile);
+router.post('/change-password',  authMiddleware.verifyToken, authController.changePassword);
+router.post('/2fa/setup',        authMiddleware.verifyToken, authController.setupTwoFactor);
+router.post('/2fa/enable',       authMiddleware.verifyToken, authController.enableTwoFactor);
+router.post('/2fa/disable',      authMiddleware.verifyToken, authController.disableTwoFactor);
+
+module.exports = router;

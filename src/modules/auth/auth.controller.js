@@ -1,51 +1,151 @@
-// auth.controller.js
-const authservice = require('./auth.service');
+// src/modules/auth/auth.controller.js
+const authService = require('./auth.service');
 
-/**
- * POST /api/auth/register
- */
 exports.register = async (req, res) => {
     try {
-        console.log('📥 Requête reçue sur /register');
-        console.log('📝 Body:', req.body);
-        const result = await authservice.register(req.body);
-        console.log('✅ Inscription réussie:', result);
+        const result = await authService.register(req.body);
         res.status(201).json(result);
-    }
-    catch (error) {
-        console.error('❌ Erreur register:', error);
-        res.status(400).json({
-            success: false,
-            message: error.message
-        });
+    } catch (error) {
+        console.error('❌ Erreur register:', error.message);
+        res.status(400).json({ success: false, message: error.message });
     }
 };
 
-/**
- * POST /api/auth/login
- */
 exports.login = async (req, res) => {
     try {
-        console.log('📥 Requête reçue sur /login');
-        console.log('📝 Body:', req.body);
-        
         const { email, password } = req.body;
-        
         if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email et mot de passe requis'
-            });
+            return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
         }
-        
-        const result = await authservice.login(email, password);
-        console.log('✅ Connexion réussie pour:', email);
+        const result = await authService.login(email, password);
         res.json(result);
     } catch (error) {
-        console.error('❌ Erreur login:', error);
-        res.status(401).json({
-            success: false,
-            message: error.message
-        });
+        console.error('❌ Erreur login:', error.message);
+        res.status(401).json({ success: false, message: error.message });
+    }
+};
+
+exports.refreshToken = async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        const result = await authService.refreshAccessToken(refreshToken);
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Erreur refresh token:', error.message);
+        res.status(401).json({ success: false, message: error.message });
+    }
+};
+
+exports.verifyLoginTwoFactor = async (req, res) => {
+    try {
+        const { tempToken, code } = req.body;
+        if (!tempToken || !code) {
+            return res.status(400).json({ success: false, message: 'Token et code requis' });
+        }
+        const result = await authService.verifyLoginTwoFactor(tempToken, code);
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Erreur 2FA login:', error.message);
+        res.status(401).json({ success: false, message: error.message });
+    }
+};
+
+exports.setupTwoFactor = async (req, res) => {
+    try {
+        const result = await authService.setupTwoFactor(req.user.id);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.enableTwoFactor = async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) return res.status(400).json({ success: false, message: 'Code requis' });
+        const result = await authService.enableTwoFactor(req.user.id, code);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.disableTwoFactor = async (req, res) => {
+    try {
+        const { code } = req.body;
+        if (!code) return res.status(400).json({ success: false, message: 'Code requis' });
+        const result = await authService.disableTwoFactor(req.user.id, code);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.updateProfile = async (req, res) => {
+    try {
+        const result = await authService.updateProfile(req.user.id, req.body);
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Erreur update profile:', error.message);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ success: false, message: 'Email requis' });
+        const result = await authService.forgotPassword(email);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        if (!token || !newPassword) {
+            return res.status(400).json({ success: false, message: 'Token et nouveau mot de passe requis' });
+        }
+        const result = await authService.resetPassword(token, newPassword);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.verifyEmail = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const result = await authService.verifyEmail(token);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.validateToken = async (req, res) => {
+    res.json({ success: true, user: req.user });
+};
+
+exports.getProfile = async (req, res) => {
+    try {
+        const User = require('../user/user.model');
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
+        res.json({ success: true, user: require('./auth.service')._formatUser(user) });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 };

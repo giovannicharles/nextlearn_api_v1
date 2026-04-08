@@ -1,39 +1,42 @@
+// src/middleware/auth.middleware.js
 const jwt = require('jsonwebtoken');
+const User = require('../modules/user/user.model');
 
-const verifyToken = (req, res, next) => {
-    console.log('🔐 verifyToken - Headers:', req.headers);
-    
-    const authHeader = req.headers['authorization'];
-    console.log('🔐 Auth Header:', authHeader ? authHeader.substring(0, 30) + '...' : 'AUCUN');
-    
-    const token = authHeader?.split(' ')[1];
-
-    if (!token) {
-        console.log('❌ verifyToken - Token manquant');
-        return res.status(403).json({ error: 'Token requis' });
-    }
-
+exports.verifyToken = async (req, res, next) => {
     try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Token manquant' });
+        }
+
+        const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded;
-        console.log('✅ verifyToken - Token valide pour user:', decoded.id);
+
+        // Refuser les tokens temporaires (2FA non complétée)
+        if (decoded.type === 'temp') {
+            return res.status(401).json({ error: 'Authentification 2FA incomplète' });
+        }
+
+        req.user = { id: decoded.id, role: decoded.role };
         next();
     } catch (error) {
-        console.error('❌ verifyToken - Token invalide:', error.message);
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({ error: 'Token expiré' });
+        }
         return res.status(401).json({ error: 'Token invalide' });
     }
 };
 
-const isAdmin = (req, res, next) => {
-    console.log('🔐 isAdmin - User:', req.user);
-    
-    if (req.user && req.user.role === 'admin') {
-        console.log('✅ isAdmin - Accès admin autorisé');
-        next();
-    } else {
-        console.log('❌ isAdmin - Accès refusé (pas admin)');
-        res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+exports.isAdmin = (req, res, next) => {
+    if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'Accès administrateur requis' });
     }
+    next();
 };
 
-module.exports = { verifyToken, isAdmin };
+exports.isAdminOrTeacher = (req, res, next) => {
+    if (!['admin', 'professeur'].includes(req.user?.role)) {
+        return res.status(403).json({ error: 'Accès refusé' });
+    }
+    next();
+};
