@@ -179,25 +179,62 @@ class DocumentController {
         }
     }
 
+    // async downloadFile(req, res) {
+    //     try {
+    //         const filePath = req.params[0];
+    //         if (!filePath) {
+    //             return res.status(400).json({ error: 'Chemin du fichier manquant' });
+    //         }
+
+    //         const fullPath = path.join(fileStorageService.getFileStorageLocation(), filePath);
+
+    //         res.download(fullPath, (err) => {
+    //             if (err) {
+    //                 console.error('Erreur téléchargement:', err);
+    //                 res.status(500).json({ error: 'Erreur lors du téléchargement' });
+    //             }
+    //         });
+    //     } catch (error) {
+    //         res.status(500).json({ error: error.message });
+    //     }
+    // }
+
     async downloadFile(req, res) {
-        try {
-            const filePath = req.params[0];
-            if (!filePath) {
-                return res.status(400).json({ error: 'Chemin du fichier manquant' });
-            }
+    try {
+        // Récupérer le chemin complet après /download/
+        const filePath = req.params[0];
+        if (!filePath) {
+            return res.status(400).json({ error: 'Chemin du fichier manquant' });
+        }
 
-            const fullPath = path.join(fileStorageService.getFileStorageLocation(), filePath);
+        // Chercher le document correspondant à ce storagePath (ou fileUrl)
+        // Méthode 1 : on suppose que le front envoie l'ID du document ? Non, le front utilise l'URL directe.
+        // Ici on a le chemin relatif ou l'URL Cloudinary.
+        // Le plus simple : rediriger vers l'URL Cloudinary si c'en est une.
+        
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+            // C'est déjà une URL (Cloudinary)
+            return res.redirect(filePath);
+        }
 
-            res.download(fullPath, (err) => {
-                if (err) {
-                    console.error('Erreur téléchargement:', err);
+        // Sinon, c'est un chemin local
+        const fullPath = path.join(fileStorageService.getFileStorageLocation(), filePath);
+        
+        // Vérifier que le fichier existe
+        await fs.access(fullPath);
+        res.download(fullPath, (err) => {
+            if (err) {
+                console.error('Erreur téléchargement local:', err);
+                if (!res.headersSent) {
                     res.status(500).json({ error: 'Erreur lors du téléchargement' });
                 }
-            });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
+            }
+        });
+    } catch (error) {
+        console.error('Erreur downloadFile:', error);
+        res.status(500).json({ error: error.message });
     }
+}
 }
 
 module.exports = new DocumentController();

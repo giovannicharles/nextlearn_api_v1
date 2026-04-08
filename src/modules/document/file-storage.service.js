@@ -63,8 +63,9 @@ class FileStorageService {
                     const extension = path.extname(file.originalname).substring(1);
                     
                     // Déterminer le resource_type en fonction du fichier
+                    // CORRECTION : pour les PDF, utiliser 'auto' (ou 'image') au lieu de 'raw'
+                    // Cela permet à Cloudinary de servir le PDF avec le bon Content-Type et affichage inline
                     let resourceType = 'auto';
-                    if (file.mimetype === 'application/pdf') resourceType = 'raw';
                     if (file.mimetype.includes('image')) resourceType = 'image';
                     
                     return {
@@ -174,20 +175,28 @@ class FileStorageService {
         try {
             // Si c'est une URL Cloudinary, supprimer via l'API
             if (this.useCloudinary && (filePath.startsWith('http://') || filePath.startsWith('https://'))) {
-                // Extraire l'ID public depuis l'URL Cloudinary
-                const urlParts = filePath.split('/');
-                const filename = urlParts[urlParts.length - 1];
-                const publicId = filename.split('.')[0];
-                const folder = 'nextlearn/documents';
-                
+                // Extraction robuste du public_id et du resource_type depuis l'URL Cloudinary
                 try {
-                    const result = await cloudinary.uploader.destroy(`${folder}/${publicId}`, { resource_type: 'raw' });
-                    if (result.result === 'ok') {
-                        console.log(`✅ Fichier Cloudinary supprimé: ${publicId}`);
-                        return true;
+                    const url = new URL(filePath);
+                    const pathParts = url.pathname.split('/');
+                    // Exemple d'URL : /v1234567/nextlearn/documents/maths/abc123.pdf
+                    const uploadIndex = pathParts.findIndex(p => p === 'upload');
+                    if (uploadIndex !== -1 && pathParts.length > uploadIndex + 2) {
+                        const resourceType = pathParts[uploadIndex + 1]; // 'auto', 'image', 'raw', etc.
+                        const publicIdWithExt = pathParts.slice(uploadIndex + 2).join('/');
+                        const publicId = publicIdWithExt.replace(/\.[^/.]+$/, ''); // enlever l'extension
+                        const result = await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+                        if (result.result === 'ok') {
+                            console.log(`✅ Fichier Cloudinary supprimé: ${publicId} (type: ${resourceType})`);
+                            return true;
+                        } else {
+                            console.warn(`⚠️ Échec suppression Cloudinary: ${result.result}`);
+                        }
+                    } else {
+                        console.error('❌ Impossible d\'extraire le public_id de l\'URL:', filePath);
                     }
-                } catch (cloudError) {
-                    console.error('Erreur suppression Cloudinary:', cloudError);
+                } catch (parseError) {
+                    console.error('Erreur parsing URL Cloudinary:', parseError);
                 }
                 return false;
             }
