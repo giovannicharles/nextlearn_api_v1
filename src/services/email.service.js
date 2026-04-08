@@ -3,6 +3,7 @@ const nodemailer = require('nodemailer');
 
 class EmailService {
     constructor() {
+        // Forcer l'utilisation d'IPv4 pour éviter les problèmes ENETUNREACH
         this.transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST || 'smtp.gmail.com',
             port: parseInt(process.env.SMTP_PORT || '587'),
@@ -11,6 +12,10 @@ class EmailService {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASS,
             },
+            // ⬇️ Force IPv4 pour contourner les blocages IPv6 (Render, etc.)
+            connectionTimeout: 10000,
+            socketTimeout: 10000,
+            family: 4, // ← clé importante
         });
     }
 
@@ -26,7 +31,7 @@ class EmailService {
 
     // ── Vérification email à l'inscription ────────────────────
     async sendVerificationEmail(to, token, name) {
-        const verifyUrl = `${process.env.APP_URL || 'https://nextlearn-api.onrender.com'}/api/auth/verify-email/${token}`;
+        const verifyUrl = `${process.env.APP_URL || 'https://nextlearn-api-v1.onrender.com'}/api/auth/verify-email/${token}`;
         await this.transporter.sendMail({
             from: `"NextLearn Saint-Jean" <${process.env.SMTP_USER}>`,
             to,
