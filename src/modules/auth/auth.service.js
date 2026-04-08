@@ -77,7 +77,7 @@ class AuthService {
     }
 
     // ─────────────────────────────────────────────────────────
-    // LOGIN - Génère et envoie un OTP par email
+    // LOGIN - Génère et envoie un OTP par email (obligatoire pour tous)
     // ─────────────────────────────────────────────────────────
     async login(email, password) {
         if (!email || !password) throw new Error('Email et mot de passe sont requis');
@@ -110,7 +110,7 @@ class AuthService {
             lastLoginAt: new Date()
         });
 
-        // Génération d'un code OTP à 6 chiffres
+        // Génération d'un code OTP à 6 chiffres (obligatoire pour tous)
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
