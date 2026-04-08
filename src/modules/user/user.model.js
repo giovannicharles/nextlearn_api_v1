@@ -1,3 +1,4 @@
+// src/modules/user/user.model.js
 const mongoose = require('mongoose');
 const { userRole } = require('./user.enum');
 
@@ -42,18 +43,7 @@ const userSchema = new mongoose.Schema({
         default: false
     },
 
-    // ── Ancienne 2FA (TOTP) – conservée pour compatibilité ─────
-    twoFactorEnabled: {
-        type: Boolean,
-        default: false
-    },
-    twoFactorSecret: {
-        type: String,
-        default: null,
-        select: false
-    },
-
-    // ── Nouvelle 2FA par email (OTP) ───────────────────────────
+    // ── OTP email (2FA obligatoire à chaque connexion) ────────
     otpCode: {
         type: String,
         default: null,
@@ -63,6 +53,17 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: null,
         select: false
+    },
+    otpAttempts: {
+        type: Number,
+        default: 0,
+        select: false
+    },
+
+    // ── Champ conservé pour compatibilité frontend ────────────
+    twoFactorEnabled: {
+        type: Boolean,
+        default: true  // toujours true car OTP obligatoire
     },
 
     // ── Réinitialisation de mot de passe ──────────────────────
@@ -77,7 +78,7 @@ const userSchema = new mongoose.Schema({
         select: false
     },
 
-    // ── Vérification email ────────────────────────────────────
+    // ── Vérification email à l'inscription ────────────────────
     emailVerificationToken: {
         type: String,
         default: null,
@@ -89,14 +90,14 @@ const userSchema = new mongoose.Schema({
         select: false
     },
 
-    // ── Refresh token ─────────────────────────────────────────
+    // ── Refresh token (rotation) ──────────────────────────────
     refreshToken: {
         type: String,
         default: null,
         select: false
     },
 
-    // ── Profil ─────────────────────────────────────────────────
+    // ── Profil ────────────────────────────────────────────────
     bio: {
         type: String,
         default: '',
@@ -107,7 +108,7 @@ const userSchema = new mongoose.Schema({
         default: null
     },
 
-    // ── Sécurité ──────────────────────────────────────────────
+    // ── Sécurité brute-force ──────────────────────────────────
     loginAttempts: {
         type: Number,
         default: 0
@@ -126,9 +127,10 @@ const userSchema = new mongoose.Schema({
     toJSON: {
         transform: function(doc, ret) {
             delete ret.password;
-            delete ret.twoFactorSecret;
             delete ret.otpCode;
             delete ret.otpExpires;
+            delete ret.otpAttempts;
+            delete ret.twoFactorSecret;
             delete ret.resetPasswordToken;
             delete ret.resetPasswordExpires;
             delete ret.emailVerificationToken;
@@ -143,7 +145,6 @@ const userSchema = new mongoose.Schema({
     toObject: {
         transform: function(doc, ret) {
             delete ret.password;
-            delete ret.twoFactorSecret;
             delete ret.otpCode;
             delete ret.otpExpires;
             delete ret.__v;
@@ -152,6 +153,7 @@ const userSchema = new mongoose.Schema({
     }
 });
 
+// userSchema.index({ email: 1 });
 userSchema.index({ resetPasswordToken: 1 });
 userSchema.index({ emailVerificationToken: 1 });
 
