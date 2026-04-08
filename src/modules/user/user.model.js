@@ -1,4 +1,3 @@
-// src/modules/user/user.model.js
 const mongoose = require('mongoose');
 const { userRole } = require('./user.enum');
 
@@ -23,7 +22,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true,
-        select: true // Force la sélection par défaut
+        select: true
     },
     role: {
         type: String,
@@ -43,7 +42,7 @@ const userSchema = new mongoose.Schema({
         default: false
     },
 
-    // ── 2FA (TOTP via Google Authenticator / Authy) ───────────
+    // ── Ancienne 2FA (TOTP) – conservée pour compatibilité ─────
     twoFactorEnabled: {
         type: Boolean,
         default: false
@@ -51,7 +50,19 @@ const userSchema = new mongoose.Schema({
     twoFactorSecret: {
         type: String,
         default: null,
-        select: false // Jamais exposé dans les réponses par défaut
+        select: false
+    },
+
+    // ── Nouvelle 2FA par email (OTP) ───────────────────────────
+    otpCode: {
+        type: String,
+        default: null,
+        select: false
+    },
+    otpExpires: {
+        type: Date,
+        default: null,
+        select: false
     },
 
     // ── Réinitialisation de mot de passe ──────────────────────
@@ -78,14 +89,14 @@ const userSchema = new mongoose.Schema({
         select: false
     },
 
-    // ── Refresh token (pour l'intercepteur Angular) ───────────
+    // ── Refresh token ─────────────────────────────────────────
     refreshToken: {
         type: String,
         default: null,
         select: false
     },
 
-    // ── Profil complémentaire ─────────────────────────────────
+    // ── Profil ─────────────────────────────────────────────────
     bio: {
         type: String,
         default: '',
@@ -111,11 +122,13 @@ const userSchema = new mongoose.Schema({
     }
 
 }, {
-    timestamps: true, // Ajoute createdAt et updatedAt automatiquement
+    timestamps: true,
     toJSON: {
         transform: function(doc, ret) {
             delete ret.password;
             delete ret.twoFactorSecret;
+            delete ret.otpCode;
+            delete ret.otpExpires;
             delete ret.resetPasswordToken;
             delete ret.resetPasswordExpires;
             delete ret.emailVerificationToken;
@@ -131,23 +144,20 @@ const userSchema = new mongoose.Schema({
         transform: function(doc, ret) {
             delete ret.password;
             delete ret.twoFactorSecret;
+            delete ret.otpCode;
+            delete ret.otpExpires;
             delete ret.__v;
             return ret;
         }
     }
 });
 
-// ── Index pour les performances ───────────────────────────────
-// userSchema.index({ email: 1 });
 userSchema.index({ resetPasswordToken: 1 });
 userSchema.index({ emailVerificationToken: 1 });
 
-// ── Méthode : vérifier si le compte est verrouillé ────────────
 userSchema.methods.isLocked = function() {
     return !!(this.lockUntil && this.lockUntil > Date.now());
 };
-
-// NE PAS ajouter de middleware 'pre' ou 'post' qui supprime le mot de passe
 
 const User = mongoose.model('User', userSchema);
 module.exports = User;

@@ -1,4 +1,3 @@
-// src/services/email.service.js
 const nodemailer = require('nodemailer');
 
 class EmailService {
@@ -48,6 +47,62 @@ class EmailService {
                 note: 'Ce lien expire dans 1 heure. Si vous n\'avez pas fait cette demande, ignorez cet email.'
             })
         });
+    }
+
+    async sendOtpEmail(to, otpCode, name) {
+        await this.transporter.sendMail({
+            from: `"NextLearn Saint-Jean" <${process.env.SMTP_USER}>`,
+            to,
+            subject: '🔐 Votre code de vérification NextLearn',
+            html: this._otpTemplate({ name, otpCode })
+        });
+    }
+
+    _otpTemplate({ name, otpCode }) {
+        return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:520px;margin:40px auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1);">
+    
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0d2b4e,#1a497d);padding:36px 32px;text-align:center;">
+      <div style="width:64px;height:64px;border-radius:16px;background:rgba(255,255,255,0.15);display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;">
+        <span style="font-size:32px;">🔐</span>
+      </div>
+      <h1 style="margin:0;color:#fff;font-size:1.5rem;font-weight:800;letter-spacing:-0.5px;">NextLearn</h1>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,0.65);font-size:0.85rem;">Connexion sécurisée</p>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:32px 32px 24px;">
+      <h2 style="margin:0 0 16px;color:#1a497d;font-size:1.25rem;font-weight:700;">Code de vérification</h2>
+      <p style="margin:0 0 8px;color:#334155;font-size:0.95rem;">Bonjour <strong>${name}</strong>,</p>
+      <p style="margin:0 0 28px;color:#475569;font-size:0.9rem;line-height:1.65;">
+        Vous êtes sur le point de vous connecter à <strong>NextLearn</strong>. Veuillez utiliser le code ci-dessous pour finaliser votre connexion.
+      </p>
+      
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="display:inline-block;background:#f1f5f9;padding:16px 32px;border-radius:16px;font-size:2rem;font-weight:800;letter-spacing:8px;color:#1a497d;font-family:monospace;">
+          ${otpCode}
+        </div>
+      </div>
+
+      <p style="margin:0 0 8px;color:#ef4444;font-size:0.8rem;text-align:center;">⚠️ Ce code expire dans 10 minutes.</p>
+      <p style="margin:0;color:#94a3b8;font-size:0.78rem;text-align:center;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f8fafc;padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:0.75rem;">© ${new Date().getFullYear()} NextLearn · Saint-Jean Ingénieur & Management</p>
+    </div>
+  </div>
+</body>
+</html>`;
     }
 
     _template({ title, name, body, btnText, btnUrl, note }) {

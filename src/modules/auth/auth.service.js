@@ -1,7 +1,6 @@
 // src/modules/auth/auth.service.js
 const jwt      = require('jsonwebtoken');
 const bcrypt   = require('bcryptjs');
-const speakeasy = require('speakeasy');
 const crypto   = require('crypto');
 const User     = require('../user/user.model');
 const { userRole } = require('../user/user.enum');
@@ -32,7 +31,6 @@ class AuthService {
             throw new Error('Nom, Prénom, email et mot de passe sont requis');
         }
 
-        // Vérification domaine (les admins @nextlearn.org sont exemptés)
         if (!isEmailAllowed(email) && !isAdminEmail(email)) {
             throw new Error('Seules les adresses @saintjeaningenieur.org et @saintjeanmanagement.org sont acceptées');
         }
@@ -49,7 +47,7 @@ class AuthService {
         const hashedPassword = await bcrypt.hash(password, 12);
 
         const emailVerificationToken  = crypto.randomBytes(32).toString('hex');
-        const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+        const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
         const user = await User.create({
             nom:      nom.trim(),
@@ -60,12 +58,10 @@ class AuthService {
             classe:   classe || '',
             filiere:  filiere || '',
             isEmailVerified: false,
-            twoFactorEnabled: false,
             emailVerificationToken,
             emailVerificationExpires,
         });
 
-        // Email de vérification (non bloquant)
         emailService.sendVerificationEmail(user.email, emailVerificationToken, `${user.nom} ${user.prenom}`)
             .catch(e => console.error('⚠️ Email vérification non envoyé:', e.message));
 
@@ -81,24 +77,22 @@ class AuthService {
     }
 
     // ─────────────────────────────────────────────────────────
-    // LOGIN
+    // LOGIN - Génère et envoie un OTP par email
     // ─────────────────────────────────────────────────────────
     async login(email, password) {
         if (!email || !password) throw new Error('Email et mot de passe sont requis');
 
-        // Vérification domaine (admins @nextlearn.org exemptés)
         if (!isEmailAllowed(email) && !isAdminEmail(email)) {
             throw new Error('Accès réservé aux étudiants et enseignants Saint-Jean');
         }
 
         const user = await User.findOne({ email: email.toLowerCase() })
-            .select('+password +twoFactorSecret +refreshToken');
+            .select('+password +refreshToken');
 
         if (!user || !user.password) {
             throw new Error('Email ou mot de passe incorrect');
         }
 
-        // Vérifier si le compte est verrouillé
         if (user.isLocked && user.isLocked()) {
             throw new Error('Compte temporairement verrouillé. Réessayez dans quelques minutes.');
         }
@@ -106,43 +100,38 @@ class AuthService {
         const isPasswordValid = await bcrypt.compare(password, user.password);
 
         if (!isPasswordValid) {
-            // Incrémenter les tentatives (non bloquant)
             await User.findByIdAndUpdate(user._id, { $inc: { loginAttempts: 1 } });
             throw new Error('Email ou mot de passe incorrect');
         }
 
-        // Reset des tentatives au succès + mise à jour lastLoginAt
         await User.findByIdAndUpdate(user._id, {
             loginAttempts: 0,
             lockUntil: null,
             lastLoginAt: new Date()
         });
 
-        // Si la 2FA est activée → token temporaire seulement
-        if (user.twoFactorEnabled) {
-            const tempToken = this._generateTempToken(user._id);
-            return {
-                success: true,
-                requiresTwoFactor: true,
-                tempToken,
-                message: 'Code 2FA requis'
-            };
-        }
+        // Génération d'un code OTP à 6 chiffres
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-        const { token, refreshToken } = this._generateTokenPair(user._id, user.role);
-
-        // Stocker le refresh token hashé
         await User.findByIdAndUpdate(user._id, {
-            refreshToken: crypto.createHash('sha256').update(refreshToken).digest('hex')
+            otpCode: otpCode,
+            otpExpires: otpExpires
         });
 
+        try {
+            await emailService.sendOtpEmail(user.email, otpCode, `${user.nom} ${user.prenom}`);
+        } catch (emailError) {
+            console.error('❌ Erreur envoi OTP:', emailError);
+            throw new Error('Erreur lors de l\'envoi du code. Veuillez réessayer.');
+        }
+
+        const tempToken = this._generateTempToken(user._id);
         return {
             success: true,
-            requiresTwoFactor: false,
-            user: this._formatUser(user),
-            token,
-            refreshToken,
-            message: 'Connexion réussie'
+            requiresTwoFactor: true,
+            tempToken,
+            message: 'Un code de vérification à 6 chiffres vous a été envoyé par email.'
         };
     }
 
@@ -160,7 +149,6 @@ class AuthService {
 
         const { token, refreshToken: newRefreshToken } = this._generateTokenPair(user._id, user.role);
 
-        // Rotation du refresh token
         await User.findByIdAndUpdate(user._id, {
             refreshToken: crypto.createHash('sha256').update(newRefreshToken).digest('hex')
         });
@@ -174,7 +162,7 @@ class AuthService {
     }
 
     // ─────────────────────────────────────────────────────────
-    // VÉRIFICATION 2FA LORS DU LOGIN
+    // VÉRIFICATION OTP LORS DU LOGIN
     // ─────────────────────────────────────────────────────────
     async verifyLoginTwoFactor(tempToken, code) {
         let decoded;
@@ -186,19 +174,21 @@ class AuthService {
 
         if (decoded.type !== 'temp') throw new Error('Token invalide');
 
-        const user = await User.findById(decoded.id).select('+twoFactorSecret');
-        if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
-            throw new Error('Utilisateur introuvable');
+        const user = await User.findById(decoded.id).select('+otpCode +otpExpires');
+        if (!user) throw new Error('Utilisateur introuvable');
+
+        if (!user.otpCode || !user.otpExpires || user.otpExpires < new Date()) {
+            throw new Error('Code de vérification expiré. Veuillez vous reconnecter.');
         }
 
-        const isValid = speakeasy.totp.verify({
-            secret:   user.twoFactorSecret,
-            encoding: 'base32',
-            token:    code,
-            window:   1
-        });
+        if (user.otpCode !== code) {
+            throw new Error('Code de vérification invalide.');
+        }
 
-        if (!isValid) throw new Error('Code 2FA invalide');
+        // Supprimer l'OTP après usage
+        await User.findByIdAndUpdate(user._id, {
+            $unset: { otpCode: "", otpExpires: "" }
+        });
 
         const { token, refreshToken } = this._generateTokenPair(user._id, user.role);
 
@@ -214,64 +204,6 @@ class AuthService {
             refreshToken,
             message: 'Connexion réussie'
         };
-    }
-
-    // ─────────────────────────────────────────────────────────
-    // SETUP 2FA
-    // ─────────────────────────────────────────────────────────
-    async setupTwoFactor(userId) {
-        const user = await User.findById(userId);
-        if (!user) throw new Error('Utilisateur introuvable');
-
-        const secret = speakeasy.generateSecret({
-            name:   `NextLearn (${user.email})`,
-            issuer: 'NextLearn Saint-Jean',
-            length: 20
-        });
-
-        await User.findByIdAndUpdate(userId, { twoFactorSecret: secret.base32 });
-
-        return {
-            success:    true,
-            secret:     secret.base32,
-            otpauthUrl: secret.otpauth_url
-        };
-    }
-
-    // ─────────────────────────────────────────────────────────
-    // ACTIVER 2FA
-    // ─────────────────────────────────────────────────────────
-    async enableTwoFactor(userId, code) {
-        const user = await User.findById(userId).select('+twoFactorSecret');
-        if (!user || !user.twoFactorSecret) throw new Error('Configurez d\'abord la 2FA');
-
-        const isValid = speakeasy.totp.verify({
-            secret: user.twoFactorSecret, encoding: 'base32', token: code, window: 1
-        });
-
-        if (!isValid) throw new Error('Code invalide. Vérifiez votre application et réessayez');
-
-        await User.findByIdAndUpdate(userId, { twoFactorEnabled: true });
-
-        return { success: true, message: 'Authentification à deux facteurs activée' };
-    }
-
-    // ─────────────────────────────────────────────────────────
-    // DÉSACTIVER 2FA
-    // ─────────────────────────────────────────────────────────
-    async disableTwoFactor(userId, code) {
-        const user = await User.findById(userId).select('+twoFactorSecret');
-        if (!user || !user.twoFactorEnabled) throw new Error('La 2FA n\'est pas activée');
-
-        const isValid = speakeasy.totp.verify({
-            secret: user.twoFactorSecret, encoding: 'base32', token: code, window: 1
-        });
-
-        if (!isValid) throw new Error('Code invalide');
-
-        await User.findByIdAndUpdate(userId, { twoFactorEnabled: false, twoFactorSecret: null });
-
-        return { success: true, message: 'Authentification à deux facteurs désactivée' };
     }
 
     // ─────────────────────────────────────────────────────────
@@ -303,7 +235,7 @@ class AuthService {
 
         await User.findByIdAndUpdate(userId, {
             password: await bcrypt.hash(newPassword, 12),
-            refreshToken: null // Invalider tous les refresh tokens
+            refreshToken: null
         });
 
         return { success: true, message: 'Mot de passe changé avec succès' };
@@ -319,7 +251,6 @@ class AuthService {
             throw new Error('Seules les adresses institutionnelles Saint-Jean sont acceptées');
         }
 
-        // Réponse identique qu'un user existe ou non (sécurité)
         const user = await User.findOne({ email: email.toLowerCase() });
         if (!user) {
             return { success: true, message: 'Si cet email existe, un lien a été envoyé.' };
@@ -365,7 +296,7 @@ class AuthService {
             password:             await bcrypt.hash(newPassword, 12),
             resetPasswordToken:   null,
             resetPasswordExpires: null,
-            refreshToken:         null // Invalider les sessions existantes
+            refreshToken:         null
         });
 
         return { success: true, message: 'Mot de passe réinitialisé avec succès' };
@@ -427,7 +358,7 @@ class AuthService {
             filiere:          user.filiere,
             bio:              user.bio || '',
             photoUrl:         user.photoUrl || null,
-            twoFactorEnabled: user.twoFactorEnabled || false,
+            twoFactorEnabled: false, // Conservé pour compatibilité frontend
             isEmailVerified:  user.isEmailVerified || false,
         };
     }
