@@ -11,8 +11,10 @@ class EmailService {
 
     // ── Init asynchrone ───────────────────────────────────────
     async _init() {
-        const smtpUser = process.env.SMTP_USER;
-        const smtpPass = process.env.SMTP_PASS;
+        const smtpUser = "ebodegiovanni@gmail.com";
+        const smtpPass = "nyaj cesd jykb oxqu";
+        // const smtpUser = process.env.SMTP_USER;
+        // const smtpPass = process.env.SMTP_PASS;
 
         if (smtpUser && smtpPass) {
             // ── Mode SMTP réel (production configurée) ────────
