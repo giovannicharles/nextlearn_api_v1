@@ -1,5 +1,6 @@
 // src/services/email.service.js
 const nodemailer = require('nodemailer');
+const dns = require('dns').promises;
 
 class EmailService {
     constructor() {
@@ -14,15 +15,27 @@ class EmailService {
         const smtpPass = process.env.SMTP_PASS;
 
         if (smtpUser && smtpPass) {
-            // Production : SMTP réel (Gmail, SendGrid, etc.)
+            // Résoudre l'adresse IPv4 de smtp.gmail.com pour éviter IPv6
+            let host = process.env.SMTP_HOST || 'smtp.gmail.com';
+            let resolvedHost = host;
+            if (host === 'smtp.gmail.com') {
+                try {
+                    const addresses = await dns.lookup(host, { family: 4 });
+                    resolvedHost = addresses.address;
+                    console.log(`✅ Résolution IPv4 de ${host} -> ${resolvedHost}`);
+                } catch (err) {
+                    console.warn(`⚠️ Impossible de résoudre ${host} en IPv4, utilisation du nom d'hôte par défaut`);
+                }
+            }
+
             this.transporter = nodemailer.createTransport({
-                host:              process.env.SMTP_HOST || 'smtp.gmail.com',
-                port:              parseInt(process.env.SMTP_PORT || '587'),
-                secure:            false,
-                auth:              { user: smtpUser, pass: smtpPass },
-                family:            4,
-                connectionTimeout: 10000,
-                socketTimeout:     10000,
+                host: resolvedHost,
+                port: parseInt(process.env.SMTP_PORT || '587'),
+                secure: false,
+                auth: { user: smtpUser, pass: smtpPass },
+                family: 4,
+                connectionTimeout: 15000,
+                socketTimeout: 15000,
             });
             this._ready = true;
             console.log('✅ Email service initialisé (SMTP réel)');
