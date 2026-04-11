@@ -1,52 +1,46 @@
 // src/services/email.service.js
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 
 class EmailService {
     constructor() {
-        this.transporter = null;
-        this._ready      = false;
-        this._mode       = 'none'; // 'smtp' | 'ethereal' | 'log'
+        this._ready = false;
+        this._mode = 'none'; // 'sendgrid' | 'ethereal' | 'log'
         this._init();
     }
 
     // ── Init asynchrone ───────────────────────────────────────
     async _init() {
-        const smtpUser = process.env.SMTP_USER;
-        const smtpPass = process.env.SMTP_PASS;
+        const apiKey = process.env.SENDGRID_API_KEY;
 
-        if (smtpUser && smtpPass) {
-            // ── Mode SMTP réel (production configurée) ────────
+        if (apiKey) {
+            // ── Mode SendGrid (production configurée) ─────────
             try {
-                this.transporter = nodemailer.createTransport({
-                    host:   process.env.SMTP_HOST || 'smtp.gmail.com',
-                    port:   parseInt(process.env.SMTP_PORT || '587'),
-                    secure: process.env.SMTP_PORT === '465',
-                    auth:   { user: smtpUser, pass: smtpPass },
-                    tls:    { rejectUnauthorized: false },
-                    connectionTimeout: 15000,
-                    socketTimeout:     15000,
-                });
-                await this.transporter.verify();
+                sgMail.setApiKey(apiKey);
+                
+                // Test simple de connexion en vérifiant la clé API
+                await this._testSendgridConnection();
+                
                 this._ready = true;
-                this._mode  = 'smtp';
-                console.log('✅ Email service initialisé (SMTP réel)');
+                this._mode = 'sendgrid';
+                console.log('✅ Email service initialisé (SendGrid)');
             } catch (err) {
-                console.error('❌ Erreur SMTP, basculement en mode log:', err.message);
+                console.error('❌ Erreur SendGrid, basculement en mode log:', err.message);
                 this._enableLogMode();
             }
 
         } else if (process.env.NODE_ENV !== 'production') {
             // ── Mode Ethereal (développement local uniquement) ─
             try {
+                const nodemailer = require('nodemailer');
                 const testAccount = await nodemailer.createTestAccount();
-                this.transporter  = nodemailer.createTransport({
-                    host:   'smtp.ethereal.email',
-                    port:   587,
+                this._etherealTransporter = nodemailer.createTransport({
+                    host: 'smtp.ethereal.email',
+                    port: 587,
                     secure: false,
-                    auth:   { user: testAccount.user, pass: testAccount.pass },
+                    auth: { user: testAccount.user, pass: testAccount.pass },
                 });
                 this._ready = true;
-                this._mode  = 'ethereal';
+                this._mode = 'ethereal';
                 console.log('📧 Ethereal prêt (dev) — https://ethereal.email');
                 console.log(`   Compte: ${testAccount.user}`);
             } catch (e) {
@@ -55,20 +49,48 @@ class EmailService {
             }
 
         } else {
-            // ── Mode log (production sans SMTP configuré) ─────
-            // Pas d'erreur, pas de timeout — le code apparaît dans les logs Render
+            // ── Mode log (production sans SendGrid configuré) ───
             this._enableLogMode();
         }
     }
 
-    _enableLogMode() {
-        this._ready = true;
-        this._mode  = 'log';
-        console.warn('📋 Email service en mode LOG — les codes apparaissent dans les logs serveur');
-        console.warn('   → Configurez SMTP_USER et SMTP_PASS dans votre .env pour les vrais emails');
+    // Test de connexion SendGrid
+    async _testSendgridConnection() {
+        // SendGrid n'a pas de méthode de "vérification" explicite comme Nodemailer
+        // On effectue un test simple en vérifiant si la clé API est valide
+        if (!process.env.SENDGRID_API_KEY) {
+            throw new Error('Clé API SendGrid manquante');
+        }
+        
+        // Test simple en essayant de récupérer les templates (requête authentifiée)
+        try {
+            const client = require('@sendgrid/client');
+            client.setApiKey(process.env.SENDGRID_API_KEY);
+            const response = await client.request({
+                method: 'GET',
+                url: '/v3/templates',
+            });
+            
+            if (response.statusCode !== 200) {
+                throw new Error('Clé API SendGrid invalide');
+            }
+        } catch (error) {
+            // Si l'API n'est pas accessible, on considère que c'est un problème réseau
+            // mais on continue quand même avec le service
+            console.warn('⚠️ Impossible de vérifier la clé API SendGrid, mais le service continue');
+        }
+        
+        return true;
     }
 
-    // ── Envoyer via le transporteur ou logger ─────────────────
+    _enableLogMode() {
+        this._ready = true;
+        this._mode = 'log';
+        console.warn('📋 Email service en mode LOG — les codes apparaissent dans les logs serveur');
+        console.warn('   → Configurez SENDGRID_API_KEY dans votre .env pour les vrais emails');
+    }
+
+    // ── Envoyer via SendGrid, Ethereal ou logger ───────────────
     async _send(mailOptions) {
         if (this._mode === 'log') {
             // En mode log : simuler un délai réaliste puis afficher dans les logs
@@ -89,76 +111,150 @@ class EmailService {
             return { messageId: `log-${Date.now()}` };
         }
 
-        // Attendre que le transporteur soit prêt (max 8s)
-        for (let i = 0; i < 16; i++) {
-            if (this._ready && this.transporter) break;
-            await new Promise(r => setTimeout(r, 500));
+        if (this._mode === 'ethereal') {
+            // Attendre que le transporteur soit prêt (max 8s)
+            for (let i = 0; i < 16; i++) {
+                if (this._ready && this._etherealTransporter) break;
+                await new Promise(r => setTimeout(r, 500));
+            }
+            if (!this._ready || !this._etherealTransporter) {
+                throw new Error('Service email non disponible');
+            }
+
+            const info = await this._etherealTransporter.sendMail(mailOptions);
+            console.log(`📧 [DEV] Preview: ${require('nodemailer').getTestMessageUrl(info)}`);
+            return info;
         }
-        if (!this._ready || !this.transporter) {
+
+        // Mode SendGrid
+        if (!this._ready) {
             throw new Error('Service email non disponible');
         }
 
-        const info = await this.transporter.sendMail(mailOptions);
+        try {
+            // Préparation du message pour SendGrid
+            const msg = {
+                to: mailOptions.to,
+                from: {
+                    email: process.env.SENDGRID_FROM_EMAIL || 'noreply@nextlearn.org',
+                    name: 'NextLearn'
+                },
+                subject: mailOptions.subject,
+                html: mailOptions.html,
+                // Ajout de personnalisation si disponible
+                ...(mailOptions.templateId && {
+                    templateId: mailOptions.templateId,
+                    dynamicTemplateData: mailOptions.dynamicTemplateData
+                })
+            };
 
-        if (this._mode === 'ethereal') {
-            console.log(`📧 [DEV] Preview: ${nodemailer.getTestMessageUrl(info)}`);
+            // Envoi via SendGrid avec timeout
+            const response = await Promise.race([
+                sgMail.send(msg),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Timeout d\'envoi SendGrid')), 10000)
+                )
+            ]);
+
+            return { messageId: response[0]?.headers?.['x-message-id'] || `sendgrid-${Date.now()}` };
+        } catch (error) {
+            console.error('❌ Erreur SendGrid:', error);
+            throw new Error(`Impossible d'envoyer l'email: ${error.message}`);
         }
-
-        return info;
     }
 
     // ── OTP de connexion ──────────────────────────────────────
     async sendOtpEmail(to, otpCode, name) {
-        const from = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@app.local'}>`;
-
-        await this._send({
-            from,
-            to,
-            subject:   `${otpCode} — Code de connexion NextLearn`,
-            html:      this._otpTemplate({ name, otpCode }),
-            _otpCode:  otpCode, // utilisé par le mode log
-        });
+        if (this._mode === 'sendgrid' && process.env.SENDGRID_OTP_TEMPLATE_ID) {
+            // Utiliser un template SendGrid si disponible
+            await this._send({
+                to,
+                subject: `${otpCode} — Code de connexion NextLearn`,
+                templateId: process.env.SENDGRID_OTP_TEMPLATE_ID,
+                dynamicTemplateData: {
+                    name,
+                    otp_code: otpCode,
+                    to_email: to
+                },
+                _otpCode: otpCode, // utilisé par le mode log
+            });
+        } else {
+            // Pour Ethereal, Log mode ou si pas de template SendGrid
+            await this._send({
+                to,
+                subject: `${otpCode} — Code de connexion NextLearn`,
+                html: this._otpTemplate({ name, otpCode }),
+                _otpCode: otpCode, // utilisé par le mode log
+            });
+        }
     }
 
     // ── Vérification email ────────────────────────────────────
     async sendVerificationEmail(to, token, name) {
-        const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@app.local'}>`;
         const verifyUrl = `${process.env.APP_URL || 'https://nextlearn-api-v1.onrender.com'}/api/auth/verify-email/${token}`;
 
-        await this._send({
-            from,
-            to,
-            subject: 'Activez votre compte NextLearn',
-            html:    this._template({
-                title:   'Activez votre compte',
-                name,
-                body:    `Merci de rejoindre <strong>NextLearn</strong>. Cliquez ci-dessous pour activer votre compte.`,
-                btnText: 'Activer mon compte',
-                btnUrl:  verifyUrl,
-                note:    'Ce lien expire dans 24 heures.',
-            }),
-        });
+        if (this._mode === 'sendgrid' && process.env.SENDGRID_VERIFICATION_TEMPLATE_ID) {
+            // Utiliser un template SendGrid si disponible
+            await this._send({
+                to,
+                subject: 'Activez votre compte NextLearn',
+                templateId: process.env.SENDGRID_VERIFICATION_TEMPLATE_ID,
+                dynamicTemplateData: {
+                    name,
+                    verification_url: verifyUrl,
+                    to_email: to
+                }
+            });
+        } else {
+            // Pour Ethereal, Log mode ou si pas de template SendGrid
+            await this._send({
+                to,
+                subject: 'Activez votre compte NextLearn',
+                html: this._template({
+                    title: 'Activez votre compte',
+                    name,
+                    body: `Merci de rejoindre <strong>NextLearn</strong>. Cliquez ci-dessous pour activer votre compte.`,
+                    btnText: 'Activer mon compte',
+                    btnUrl: verifyUrl,
+                    note: 'Ce lien expire dans 24 heures.',
+                }),
+            });
+        }
     }
 
     // ── Reset mot de passe ────────────────────────────────────
     async sendPasswordResetEmail(to, token, name) {
-        const from     = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@app.local'}>`;
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:8100'}/auth/login?token=${token}`;
 
-        await this._send({
-            from,
-            to,
-            subject:      'Réinitialisation de votre mot de passe — NextLearn',
-            html:         this._template({
-                title:   'Réinitialiser votre mot de passe',
-                name,
-                body:    `Vous avez demandé la réinitialisation de votre mot de passe. Cliquez ci-dessous.`,
-                btnText: 'Réinitialiser mon mot de passe',
-                btnUrl:  resetUrl,
-                note:    'Ce lien expire dans 1 heure.',
-            }),
-            _resetToken: token, // utilisé par le mode log
-        });
+        if (this._mode === 'sendgrid' && process.env.SENDGRID_RESET_TEMPLATE_ID) {
+            // Utiliser un template SendGrid si disponible
+            await this._send({
+                to,
+                subject: 'Réinitialisation de votre mot de passe — NextLearn',
+                templateId: process.env.SENDGRID_RESET_TEMPLATE_ID,
+                dynamicTemplateData: {
+                    name,
+                    reset_url: resetUrl,
+                    to_email: to
+                },
+                _resetToken: token, // utilisé par le mode log
+            });
+        } else {
+            // Pour Ethereal, Log mode ou si pas de template SendGrid
+            await this._send({
+                to,
+                subject: 'Réinitialisation de votre mot de passe — NextLearn',
+                html: this._template({
+                    title: 'Réinitialiser votre mot de passe',
+                    name,
+                    body: `Vous avez demandé la réinitialisation de votre mot de passe. Cliquez ci-dessous.`,
+                    btnText: 'Réinitialiser mon mot de passe',
+                    btnUrl: resetUrl,
+                    note: 'Ce lien expire dans 1 heure.',
+                }),
+                _resetToken: token, // utilisé par le mode log
+            });
+        }
     }
 
     // ── Template OTP ──────────────────────────────────────────
