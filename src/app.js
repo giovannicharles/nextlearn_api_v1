@@ -28,7 +28,8 @@ const corsOptions = {
             'http://localhost',
             'https://localhost',
             'file://',
-            'https://nextlearn-api-v1.onrender.com'
+            'https://nextlearn-api-v1.onrender.com',
+            'https://frontend-v1-nextlearn-mobile.vercel.app'
         ];
 
         if (allowedOrigins.includes(origin) || origin.startsWith('file://')) {
