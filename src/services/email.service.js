@@ -1,174 +1,164 @@
 // src/services/email.service.js
 const nodemailer = require('nodemailer');
-const dns = require('dns').promises;
 
 class EmailService {
     constructor() {
         this.transporter = null;
         this._ready      = false;
+        this._mode       = 'none'; // 'smtp' | 'ethereal' | 'log'
         this._init();
     }
 
-    // ── Init asynchrone (Ethereal en dev si pas de SMTP configuré) ──
+    // ── Init asynchrone ───────────────────────────────────────
     async _init() {
         const smtpUser = process.env.SMTP_USER;
         const smtpPass = process.env.SMTP_PASS;
 
         if (smtpUser && smtpPass) {
+            // ── Mode SMTP réel (production configurée) ────────
             try {
-                // Configuration améliorée pour Gmail
                 this.transporter = nodemailer.createTransport({
-                    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-                    port: parseInt(process.env.SMTP_PORT || '587'),
-                    secure: process.env.SMTP_PORT === '465', // true pour 465, false pour autres ports
-                    auth: { 
-                        user: smtpUser, 
-                        pass: smtpPass,
-                        // Pour Gmail, il est recommandé d'utiliser OAuth2 ou un "mot de passe d'application"
-                        // Si vous utilisez un mot de passe normal, assurez-vous d'avoir activé "l'accès aux applications moins sécurisées"
-                    },
-                    tls: {
-                        rejectUnauthorized: false // Évite les erreurs de certificat
-                    },
-                    connectionTimeout: 30000, // Augmenté à 30s
-                    socketTimeout: 30000,     // Augmenté à 30s
+                    host:   process.env.SMTP_HOST || 'smtp.gmail.com',
+                    port:   parseInt(process.env.SMTP_PORT || '587'),
+                    secure: process.env.SMTP_PORT === '465',
+                    auth:   { user: smtpUser, pass: smtpPass },
+                    tls:    { rejectUnauthorized: false },
+                    connectionTimeout: 15000,
+                    socketTimeout:     15000,
                 });
-                
-                // Vérifier la connexion
                 await this.transporter.verify();
                 this._ready = true;
+                this._mode  = 'smtp';
                 console.log('✅ Email service initialisé (SMTP réel)');
-            } catch (error) {
-                console.error('❌ Erreur lors de l\'initialisation SMTP:', error.message);
-                // En cas d'erreur, basculer sur Ethereal
-                this._initEthereal();
+            } catch (err) {
+                console.error('❌ Erreur SMTP, basculement en mode log:', err.message);
+                this._enableLogMode();
             }
+
+        } else if (process.env.NODE_ENV !== 'production') {
+            // ── Mode Ethereal (développement local uniquement) ─
+            try {
+                const testAccount = await nodemailer.createTestAccount();
+                this.transporter  = nodemailer.createTransport({
+                    host:   'smtp.ethereal.email',
+                    port:   587,
+                    secure: false,
+                    auth:   { user: testAccount.user, pass: testAccount.pass },
+                });
+                this._ready = true;
+                this._mode  = 'ethereal';
+                console.log('📧 Ethereal prêt (dev) — https://ethereal.email');
+                console.log(`   Compte: ${testAccount.user}`);
+            } catch (e) {
+                console.warn('⚠️ Ethereal indisponible, mode log activé:', e.message);
+                this._enableLogMode();
+            }
+
         } else {
-            this._initEthereal();
+            // ── Mode log (production sans SMTP configuré) ─────
+            // Pas d'erreur, pas de timeout — le code apparaît dans les logs Render
+            this._enableLogMode();
         }
     }
 
-    // ── Initialisation Ethereal ───────────────────────────────
-    async _initEthereal() {
-        console.warn('⚠️  SMTP_USER/SMTP_PASS non définis ou erreur SMTP → mode développement (Ethereal)');
-        try {
-            const testAccount = await nodemailer.createTestAccount();
-            this.transporter  = nodemailer.createTransport({
-                host:   'smtp.ethereal.email',
-                port:   587,
-                secure: false,
-                auth:   { user: testAccount.user, pass: testAccount.pass },
-            });
-            this._ready = true;
-            console.log('📧 Ethereal prêt — voir les emails sur https://ethereal.email');
-            console.log(`   Compte: ${testAccount.user} / ${testAccount.pass}`);
-        } catch (e) {
-            console.error('❌ Impossible de créer un compte Ethereal:', e.message);
-            this._ready = false;
-        }
+    _enableLogMode() {
+        this._ready = true;
+        this._mode  = 'log';
+        console.warn('📋 Email service en mode LOG — les codes apparaissent dans les logs serveur');
+        console.warn('   → Configurez SMTP_USER et SMTP_PASS dans votre .env pour les vrais emails');
     }
 
-    // ── Attendre que le transporteur soit prêt ────────────────
-    async _getTransporter() {
-        if (this._ready && this.transporter) return this.transporter;
-        
-        // Attendre jusqu'à 10s (augmenté)
-        for (let i = 0; i < 20; i++) {
+    // ── Envoyer via le transporteur ou logger ─────────────────
+    async _send(mailOptions) {
+        if (this._mode === 'log') {
+            // En mode log : simuler un délai réaliste puis afficher dans les logs
+            await new Promise(r => setTimeout(r, 50));
+            console.log('');
+            console.log('═══════════════════════════════════════');
+            console.log('📧 [EMAIL LOG MODE]');
+            console.log(`   À      : ${mailOptions.to}`);
+            console.log(`   Sujet  : ${mailOptions.subject}`);
+            if (mailOptions._otpCode) {
+                console.log(`   CODE OTP : ${mailOptions._otpCode}`);
+            }
+            if (mailOptions._resetToken) {
+                console.log(`   RESET TOKEN : ${mailOptions._resetToken}`);
+            }
+            console.log('═══════════════════════════════════════');
+            console.log('');
+            return { messageId: `log-${Date.now()}` };
+        }
+
+        // Attendre que le transporteur soit prêt (max 8s)
+        for (let i = 0; i < 16; i++) {
+            if (this._ready && this.transporter) break;
             await new Promise(r => setTimeout(r, 500));
-            if (this._ready && this.transporter) return this.transporter;
         }
-        throw new Error('Service email indisponible. Configurez SMTP_USER et SMTP_PASS dans .env');
+        if (!this._ready || !this.transporter) {
+            throw new Error('Service email non disponible');
+        }
+
+        const info = await this.transporter.sendMail(mailOptions);
+
+        if (this._mode === 'ethereal') {
+            console.log(`📧 [DEV] Preview: ${nodemailer.getTestMessageUrl(info)}`);
+        }
+
+        return info;
     }
 
     // ── OTP de connexion ──────────────────────────────────────
     async sendOtpEmail(to, otpCode, name) {
-        try {
-            const transport = await this._getTransporter();
-            const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
+        const from = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@app.local'}>`;
 
-            const info = await transport.sendMail({
-                from,
-                to,
-                subject: `${otpCode} — Code de connexion NextLearn`,
-                html:    this._otpTemplate({ name, otpCode }),
-            });
-
-            // En dev, afficher l'URL de preview et le code dans les logs
-            if (!process.env.SMTP_USER) {
-                console.log(`📧 [DEV] OTP preview: ${nodemailer.getTestMessageUrl(info)}`);
-                console.log(`   Code OTP envoyé à ${to}: ${otpCode}`);
-            }
-            
-            return { success: true, messageId: info.messageId };
-        } catch (error) {
-            console.error('❌ Erreur lors de l\'envoi de l\'email OTP:', error.message);
-            throw new Error(`Impossible d'envoyer l'email: ${error.message}`);
-        }
+        await this._send({
+            from,
+            to,
+            subject:   `${otpCode} — Code de connexion NextLearn`,
+            html:      this._otpTemplate({ name, otpCode }),
+            _otpCode:  otpCode, // utilisé par le mode log
+        });
     }
 
-    // ── Vérification email à l'inscription ────────────────────
+    // ── Vérification email ────────────────────────────────────
     async sendVerificationEmail(to, token, name) {
-        try {
-            const transport = await this._getTransporter();
-            const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
-            const verifyUrl = `${process.env.APP_URL || 'https://nextlearn-api-v1.onrender.com'}/api/auth/verify-email/${token}`;
+        const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@app.local'}>`;
+        const verifyUrl = `${process.env.APP_URL || 'https://nextlearn-api-v1.onrender.com'}/api/auth/verify-email/${token}`;
 
-            const info = await transport.sendMail({
-                from,
-                to,
-                subject: 'Activez votre compte NextLearn',
-                html:    this._template({
-                    title:   'Activez votre compte',
-                    name,
-                    body:    `Merci de rejoindre <strong>NextLearn</strong>, la bibliothèque académique de Saint-Jean. Cliquez ci-dessous pour activer votre compte.`,
-                    btnText: 'Activer mon compte',
-                    btnUrl:  verifyUrl,
-                    note:    'Ce lien expire dans 24 heures.',
-                }),
-            });
-
-            if (!process.env.SMTP_USER) {
-                console.log(`📧 [DEV] Verification preview: ${nodemailer.getTestMessageUrl(info)}`);
-            }
-            
-            return { success: true, messageId: info.messageId };
-        } catch (error) {
-            console.error('❌ Erreur lors de l\'envoi de l\'email de vérification:', error.message);
-            throw new Error(`Impossible d'envoyer l'email: ${error.message}`);
-        }
+        await this._send({
+            from,
+            to,
+            subject: 'Activez votre compte NextLearn',
+            html:    this._template({
+                title:   'Activez votre compte',
+                name,
+                body:    `Merci de rejoindre <strong>NextLearn</strong>. Cliquez ci-dessous pour activer votre compte.`,
+                btnText: 'Activer mon compte',
+                btnUrl:  verifyUrl,
+                note:    'Ce lien expire dans 24 heures.',
+            }),
+        });
     }
 
-    // ── Réinitialisation de mot de passe ──────────────────────
+    // ── Reset mot de passe ────────────────────────────────────
     async sendPasswordResetEmail(to, token, name) {
-        try {
-            const transport = await this._getTransporter();
-            const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
-            const resetUrl  = `${process.env.FRONTEND_URL || 'http://localhost:8100'}/auth/login?token=${token}`;
+        const from     = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@app.local'}>`;
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:8100'}/auth/login?token=${token}`;
 
-            const info = await transport.sendMail({
-                from,
-                to,
-                subject: 'Réinitialisation de votre mot de passe — NextLearn',
-                html:    this._template({
-                    title:   'Réinitialiser votre mot de passe',
-                    name,
-                    body:    `Vous avez demandé la réinitialisation de votre mot de passe NextLearn. Cliquez ci-dessous pour choisir un nouveau mot de passe.`,
-                    btnText: 'Réinitialiser mon mot de passe',
-                    btnUrl:  resetUrl,
-                    note:    'Ce lien expire dans 1 heure. Si vous n\'avez pas fait cette demande, ignorez cet email.',
-                }),
-            });
-
-            if (!process.env.SMTP_USER) {
-                console.log(`📧 [DEV] Reset preview: ${nodemailer.getTestMessageUrl(info)}`);
-                console.log(`   Token pour ${to}: ${token}`);
-            }
-            
-            return { success: true, messageId: info.messageId };
-        } catch (error) {
-            console.error('❌ Erreur lors de l\'envoi de l\'email de réinitialisation:', error.message);
-            throw new Error(`Impossible d'envoyer l'email: ${error.message}`);
-        }
+        await this._send({
+            from,
+            to,
+            subject:      'Réinitialisation de votre mot de passe — NextLearn',
+            html:         this._template({
+                title:   'Réinitialiser votre mot de passe',
+                name,
+                body:    `Vous avez demandé la réinitialisation de votre mot de passe. Cliquez ci-dessous.`,
+                btnText: 'Réinitialiser mon mot de passe',
+                btnUrl:  resetUrl,
+                note:    'Ce lien expire dans 1 heure.',
+            }),
+            _resetToken: token, // utilisé par le mode log
+        });
     }
 
     // ── Template OTP ──────────────────────────────────────────
@@ -194,17 +184,17 @@ class EmailService {
     <div style="text-align:center;margin:0 0 12px;">${digitBoxes}</div>
     <p style="text-align:center;margin:0 0 24px;font-size:0.8rem;color:#ef4444;font-weight:600;">⏱ Ce code expire dans <strong>10 minutes</strong></p>
     <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:12px 16px;">
-      <p style="margin:0;color:#9a3412;font-size:0.78rem;line-height:1.5;">⚠️ <strong>Ne partagez jamais ce code.</strong> Si vous n'avez pas tenté de connexion, changez votre mot de passe immédiatement.</p>
+      <p style="margin:0;color:#9a3412;font-size:0.78rem;line-height:1.5;">⚠️ <strong>Ne partagez jamais ce code.</strong></p>
     </div>
   </div>
   <div style="background:#f8fafc;padding:14px 28px;text-align:center;border-top:1px solid #e2e8f0;">
-    <p style="margin:0;color:#94a3b8;font-size:0.72rem;">© ${new Date().getFullYear()} NextLearn · Saint-Jean Ingénieur & Management</p>
+    <p style="margin:0;color:#94a3b8;font-size:0.72rem;">© ${new Date().getFullYear()} NextLearn · Saint-Jean</p>
   </div>
 </div>
 </body></html>`;
     }
 
-    // ── Template générique (avec bouton lien) ─────────────────
+    // ── Template générique ────────────────────────────────────
     _template({ title, name, body, btnText, btnUrl, note }) {
         return `<!DOCTYPE html><html lang="fr">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -225,7 +215,7 @@ class EmailService {
     <p style="margin:0;color:#94a3b8;font-size:0.76rem;text-align:center;">${note}</p>
   </div>
   <div style="background:#f8fafc;padding:14px 28px;text-align:center;border-top:1px solid #e2e8f0;">
-    <p style="margin:0;color:#94a3b8;font-size:0.72rem;">© ${new Date().getFullYear()} NextLearn · Saint-Jean Ingénieur & Management</p>
+    <p style="margin:0;color:#94a3b8;font-size:0.72rem;">© ${new Date().getFullYear()} NextLearn · Saint-Jean</p>
   </div>
 </div>
 </body></html>`;

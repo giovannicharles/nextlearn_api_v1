@@ -19,5 +19,4 @@ router.get('/validate-token',   authMiddleware.verifyToken, authController.valid
 router.get('/profile',          authMiddleware.verifyToken, authController.getProfile);
 router.put('/profile',          authMiddleware.verifyToken, authController.updateProfile);
 router.post('/change-password', authMiddleware.verifyToken, authController.changePassword);
-
 module.exports = router;
