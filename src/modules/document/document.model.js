@@ -6,7 +6,12 @@ const LEVEL_LABELS = {
     L2: 'Licence 2',
     L3: 'Licence 3',
     M1: 'Master 1',
-    M2: 'Master 2'
+    M2: 'Master 2',
+    I1: 'Inge 1',
+    I2: 'Inge 2',
+    I3: 'Inge 3',
+    I4: 'Inge 4',
+    I5: 'Inge 5',
 };
 
 const documentSchema = new mongoose.Schema({

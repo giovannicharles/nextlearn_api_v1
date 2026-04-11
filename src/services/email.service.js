@@ -15,56 +15,65 @@ class EmailService {
         const smtpPass = process.env.SMTP_PASS;
 
         if (smtpUser && smtpPass) {
-            // Résoudre l'adresse IPv4 de smtp.gmail.com pour éviter IPv6
-            let host = process.env.SMTP_HOST || 'smtp.gmail.com';
-            let resolvedHost = host;
-            if (host === 'smtp.gmail.com') {
-                try {
-                    const addresses = await dns.lookup(host, { family: 4 });
-                    resolvedHost = addresses.address;
-                    console.log(`✅ Résolution IPv4 de ${host} -> ${resolvedHost}`);
-                } catch (err) {
-                    console.warn(`⚠️ Impossible de résoudre ${host} en IPv4, utilisation du nom d'hôte par défaut`);
-                }
+            try {
+                // Configuration améliorée pour Gmail
+                this.transporter = nodemailer.createTransport({
+                    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+                    port: parseInt(process.env.SMTP_PORT || '587'),
+                    secure: process.env.SMTP_PORT === '465', // true pour 465, false pour autres ports
+                    auth: { 
+                        user: smtpUser, 
+                        pass: smtpPass,
+                        // Pour Gmail, il est recommandé d'utiliser OAuth2 ou un "mot de passe d'application"
+                        // Si vous utilisez un mot de passe normal, assurez-vous d'avoir activé "l'accès aux applications moins sécurisées"
+                    },
+                    tls: {
+                        rejectUnauthorized: false // Évite les erreurs de certificat
+                    },
+                    connectionTimeout: 30000, // Augmenté à 30s
+                    socketTimeout: 30000,     // Augmenté à 30s
+                });
+                
+                // Vérifier la connexion
+                await this.transporter.verify();
+                this._ready = true;
+                console.log('✅ Email service initialisé (SMTP réel)');
+            } catch (error) {
+                console.error('❌ Erreur lors de l\'initialisation SMTP:', error.message);
+                // En cas d'erreur, basculer sur Ethereal
+                this._initEthereal();
             }
+        } else {
+            this._initEthereal();
+        }
+    }
 
-            this.transporter = nodemailer.createTransport({
-                host: resolvedHost,
-                port: parseInt(process.env.SMTP_PORT || '587'),
+    // ── Initialisation Ethereal ───────────────────────────────
+    async _initEthereal() {
+        console.warn('⚠️  SMTP_USER/SMTP_PASS non définis ou erreur SMTP → mode développement (Ethereal)');
+        try {
+            const testAccount = await nodemailer.createTestAccount();
+            this.transporter  = nodemailer.createTransport({
+                host:   'smtp.ethereal.email',
+                port:   587,
                 secure: false,
-                auth: { user: smtpUser, pass: smtpPass },
-                family: 4,
-                connectionTimeout: 15000,
-                socketTimeout: 15000,
+                auth:   { user: testAccount.user, pass: testAccount.pass },
             });
             this._ready = true;
-            console.log('✅ Email service initialisé (SMTP réel)');
-        } else {
-            // Dev : Ethereal — email capturé, visible sur https://ethereal.email
-            console.warn('⚠️  SMTP_USER/SMTP_PASS non définis → mode développement (Ethereal)');
-            try {
-                const testAccount = await nodemailer.createTestAccount();
-                this.transporter  = nodemailer.createTransport({
-                    host:   'smtp.ethereal.email',
-                    port:   587,
-                    secure: false,
-                    auth:   { user: testAccount.user, pass: testAccount.pass },
-                });
-                this._ready = true;
-                console.log('📧 Ethereal prêt — voir les emails sur https://ethereal.email');
-                console.log(`   Compte: ${testAccount.user} / ${testAccount.pass}`);
-            } catch (e) {
-                console.error('❌ Impossible de créer un compte Ethereal:', e.message);
-                this._ready = false;
-            }
+            console.log('📧 Ethereal prêt — voir les emails sur https://ethereal.email');
+            console.log(`   Compte: ${testAccount.user} / ${testAccount.pass}`);
+        } catch (e) {
+            console.error('❌ Impossible de créer un compte Ethereal:', e.message);
+            this._ready = false;
         }
     }
 
     // ── Attendre que le transporteur soit prêt ────────────────
     async _getTransporter() {
         if (this._ready && this.transporter) return this.transporter;
-        // Attendre jusqu'à 5s
-        for (let i = 0; i < 10; i++) {
+        
+        // Attendre jusqu'à 10s (augmenté)
+        for (let i = 0; i < 20; i++) {
             await new Promise(r => setTimeout(r, 500));
             if (this._ready && this.transporter) return this.transporter;
         }
@@ -73,71 +82,92 @@ class EmailService {
 
     // ── OTP de connexion ──────────────────────────────────────
     async sendOtpEmail(to, otpCode, name) {
-        const transport = await this._getTransporter();
-        const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
+        try {
+            const transport = await this._getTransporter();
+            const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
 
-        const info = await transport.sendMail({
-            from,
-            to,
-            subject: `${otpCode} — Code de connexion NextLearn`,
-            html:    this._otpTemplate({ name, otpCode }),
-        });
+            const info = await transport.sendMail({
+                from,
+                to,
+                subject: `${otpCode} — Code de connexion NextLearn`,
+                html:    this._otpTemplate({ name, otpCode }),
+            });
 
-        // En dev, afficher l'URL de preview et le code dans les logs
-        if (!process.env.SMTP_USER) {
-            console.log(`📧 [DEV] OTP preview: ${nodemailer.getTestMessageUrl(info)}`);
-            console.log(`   Code OTP envoyé à ${to}: ${otpCode}`);
+            // En dev, afficher l'URL de preview et le code dans les logs
+            if (!process.env.SMTP_USER) {
+                console.log(`📧 [DEV] OTP preview: ${nodemailer.getTestMessageUrl(info)}`);
+                console.log(`   Code OTP envoyé à ${to}: ${otpCode}`);
+            }
+            
+            return { success: true, messageId: info.messageId };
+        } catch (error) {
+            console.error('❌ Erreur lors de l\'envoi de l\'email OTP:', error.message);
+            throw new Error(`Impossible d'envoyer l'email: ${error.message}`);
         }
     }
 
     // ── Vérification email à l'inscription ────────────────────
     async sendVerificationEmail(to, token, name) {
-        const transport = await this._getTransporter();
-        const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
-        const verifyUrl = `${process.env.APP_URL || 'https://nextlearn-api-v1.onrender.com'}/api/auth/verify-email/${token}`;
+        try {
+            const transport = await this._getTransporter();
+            const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
+            const verifyUrl = `${process.env.APP_URL || 'https://nextlearn-api-v1.onrender.com'}/api/auth/verify-email/${token}`;
 
-        const info = await transport.sendMail({
-            from,
-            to,
-            subject: 'Activez votre compte NextLearn',
-            html:    this._template({
-                title:   'Activez votre compte',
-                name,
-                body:    `Merci de rejoindre <strong>NextLearn</strong>, la bibliothèque académique de Saint-Jean. Cliquez ci-dessous pour activer votre compte.`,
-                btnText: 'Activer mon compte',
-                btnUrl:  verifyUrl,
-                note:    'Ce lien expire dans 24 heures.',
-            }),
-        });
+            const info = await transport.sendMail({
+                from,
+                to,
+                subject: 'Activez votre compte NextLearn',
+                html:    this._template({
+                    title:   'Activez votre compte',
+                    name,
+                    body:    `Merci de rejoindre <strong>NextLearn</strong>, la bibliothèque académique de Saint-Jean. Cliquez ci-dessous pour activer votre compte.`,
+                    btnText: 'Activer mon compte',
+                    btnUrl:  verifyUrl,
+                    note:    'Ce lien expire dans 24 heures.',
+                }),
+            });
 
-        if (!process.env.SMTP_USER) {
-            console.log(`📧 [DEV] Verification preview: ${nodemailer.getTestMessageUrl(info)}`);
+            if (!process.env.SMTP_USER) {
+                console.log(`📧 [DEV] Verification preview: ${nodemailer.getTestMessageUrl(info)}`);
+            }
+            
+            return { success: true, messageId: info.messageId };
+        } catch (error) {
+            console.error('❌ Erreur lors de l\'envoi de l\'email de vérification:', error.message);
+            throw new Error(`Impossible d'envoyer l'email: ${error.message}`);
         }
     }
 
     // ── Réinitialisation de mot de passe ──────────────────────
     async sendPasswordResetEmail(to, token, name) {
-        const transport = await this._getTransporter();
-        const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
-        const resetUrl  = `${process.env.FRONTEND_URL || 'http://localhost:8100'}/auth/login?token=${token}`;
+        try {
+            const transport = await this._getTransporter();
+            const from      = `"NextLearn" <${process.env.SMTP_USER || 'nextlearn@ethereal.email'}>`;
+            const resetUrl  = `${process.env.FRONTEND_URL || 'http://localhost:8100'}/auth/login?token=${token}`;
 
-        const info = await transport.sendMail({
-            from,
-            to,
-            subject: 'Réinitialisation de votre mot de passe — NextLearn',
-            html:    this._template({
-                title:   'Réinitialiser votre mot de passe',
-                name,
-                body:    `Vous avez demandé la réinitialisation de votre mot de passe NextLearn. Cliquez ci-dessous pour choisir un nouveau mot de passe.`,
-                btnText: 'Réinitialiser mon mot de passe',
-                btnUrl:  resetUrl,
-                note:    'Ce lien expire dans 1 heure. Si vous n\'avez pas fait cette demande, ignorez cet email.',
-            }),
-        });
+            const info = await transport.sendMail({
+                from,
+                to,
+                subject: 'Réinitialisation de votre mot de passe — NextLearn',
+                html:    this._template({
+                    title:   'Réinitialiser votre mot de passe',
+                    name,
+                    body:    `Vous avez demandé la réinitialisation de votre mot de passe NextLearn. Cliquez ci-dessous pour choisir un nouveau mot de passe.`,
+                    btnText: 'Réinitialiser mon mot de passe',
+                    btnUrl:  resetUrl,
+                    note:    'Ce lien expire dans 1 heure. Si vous n\'avez pas fait cette demande, ignorez cet email.',
+                }),
+            });
 
-        if (!process.env.SMTP_USER) {
-            console.log(`📧 [DEV] Reset preview: ${nodemailer.getTestMessageUrl(info)}`);
-            console.log(`   Token pour ${to}: ${token}`);
+            if (!process.env.SMTP_USER) {
+                console.log(`📧 [DEV] Reset preview: ${nodemailer.getTestMessageUrl(info)}`);
+                console.log(`   Token pour ${to}: ${token}`);
+            }
+            
+            return { success: true, messageId: info.messageId };
+        } catch (error) {
+            console.error('❌ Erreur lors de l\'envoi de l\'email de réinitialisation:', error.message);
+            throw new Error(`Impossible d'envoyer l'email: ${error.message}`);
         }
     }
 
