@@ -23,16 +23,23 @@ const options = { serverSelectionTimeoutMS: 10000, socketTimeoutMS: 45000, famil
 const createDefaultAdmins = async () => {
     const admins = [
         {
-            nom: 'Admin', prenom: 'Principal',
-            email:    'admin@nextlearn.org',
-            password: process.env.ADMIN_PASSWORD  || 'Admin123!',
+            nom: 'Giovanni', prenom: 'Charles',
+            email:    'giovanni.ebode@saintjeaningenieur.org',
+            password: process.env.ADMIN_PASSWORD  || 'Sadaf123!',
             role: 'admin', classe: '', filiere: '',
             isEmailVerified: true, twoFactorEnabled: true,
         },
         {
-            nom: 'Admin', prenom: 'Secondaire',
-            email:    'admin2@nextlearn.org',
-            password: process.env.ADMIN2_PASSWORD || 'Admin123!',
+            nom: 'Tientcheu', prenom: 'Marvin',
+            email:    'tientcheu.joel@saintjeaningenieur.org',
+            password: process.env.ADMIN2_PASSWORD || 'JoMar123!',
+            role: 'admin', classe: '', filiere: '',
+            isEmailVerified: true, twoFactorEnabled: true,
+        },
+        {
+            nom: 'Mbouh', prenom: 'Edson',
+            email:    'mbouh.edson@saintjeaningenieur.org',
+            password: process.env.ADMIN3_PASSWORD || 'Euler123!',
             role: 'admin', classe: '', filiere: '',
             isEmailVerified: true, twoFactorEnabled: true,
         },
