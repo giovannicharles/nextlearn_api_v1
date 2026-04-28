@@ -27,6 +27,7 @@ const corsOptions = {
             'capacitor://localhost', 'ionic://localhost',
             'http://localhost', 'https://localhost', 'file://',
             'https://nextlearn-api-v1.onrender.com',
+            'https://admin-nextlearn-web.vercel.app/'
             // Ajoutez votre domaine admin prod :
             // 'https://admin.nextlearn.org',
         ];
