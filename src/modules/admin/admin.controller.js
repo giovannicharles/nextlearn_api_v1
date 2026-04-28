@@ -116,18 +116,28 @@ exports.createUser = async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
+// exports.updateUser = async (req, res) => {
+//     try {
+//         const allowed = ['nom','prenom','email','role','classe','filiere','bio','isEmailVerified'];
+//         const update  = {};
+//         allowed.forEach(f => { if (req.body[f] !== undefined) update[f] = req.body[f]; });
+//         const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+//         if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+//         await activitySvc.log({ action: 'USER_UPDATED', targetType: 'user', targetId: user._id.toString(), targetName: `${user.nom} ${user.prenom}`, performedBy: req.adminUser, metadata: { fields: Object.keys(update) }, req });
+//         res.json(user);
+//     } catch (err) { res.status(500).json({ error: err.message }); }
+// };
 exports.updateUser = async (req, res) => {
     try {
         const allowed = ['nom','prenom','email','role','classe','filiere','bio','isEmailVerified'];
         const update  = {};
         allowed.forEach(f => { if (req.body[f] !== undefined) update[f] = req.body[f]; });
-        const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+        const user = await User.findByIdAndUpdate(req.params.id, update, { returnDocument: 'after', runValidators: true });
         if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
         await activitySvc.log({ action: 'USER_UPDATED', targetType: 'user', targetId: user._id.toString(), targetName: `${user.nom} ${user.prenom}`, performedBy: req.adminUser, metadata: { fields: Object.keys(update) }, req });
         res.json(user);
     } catch (err) { res.status(500).json({ error: err.message }); }
 };
-
 exports.deleteUser = async (req, res) => {
     try {
         if (req.params.id === req.adminUser.id) return res.status(400).json({ error: 'Impossible de supprimer votre propre compte' });
@@ -163,12 +173,21 @@ exports.resetUserPassword = async (req, res) => {
         if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Mot de passe invalide (min. 8 caractères)' });
         const hashed = await bcrypt.hash(newPassword, 12);
         const user = await User.findByIdAndUpdate(req.params.id, { password: hashed, refreshToken: null }, { new: true });
+
+
         if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
         await activitySvc.log({ action: 'PASSWORD_RESET_SENT', targetType: 'user', targetId: user._id.toString(), targetName: `${user.nom} ${user.prenom}`, performedBy: req.adminUser, req });
         res.json({ message: 'Mot de passe réinitialisé' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 };
+exports.create= async (req,res) =>{
+    try{
+        
+    }
+    catch{
 
+    }
+}
 exports.changeUserRole = async (req, res) => {
     try {
         const { role } = req.body;

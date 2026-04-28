@@ -292,7 +292,7 @@ class AuthService {
         const allowed = ['nom', 'prenom', 'classe', 'filiere', 'bio', 'photoUrl'];
         const update  = {};
         allowed.forEach(f => { if (data[f] !== undefined) update[f] = data[f]; });
-        const user = await User.findByIdAndUpdate(userId, update, { new: true, runValidators: true });
+        const user = await User.findByIdAndUpdate(userId, update, { returnDocument: 'after', runValidators: true });
         if (!user) throw new Error('Utilisateur introuvable');
         return { success: true, user: this._formatUser(user), message: 'Profil mis à jour' };
     }

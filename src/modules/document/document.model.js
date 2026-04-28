@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
-const LEVELS = ['L1', 'L2', 'L3', 'M1', 'M2'];
+const LEVELS = ['L1', 'L2', 'L3', 'M1', 'M2',
+    'I1',
+    'I2',
+    'I3',
+    'I4',
+    'I5'
+];
 const LEVEL_LABELS = {
     L1: 'Licence 1',
     L2: 'Licence 2',
