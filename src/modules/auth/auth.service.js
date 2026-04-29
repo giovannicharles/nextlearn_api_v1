@@ -5,8 +5,8 @@ const crypto       = require('crypto');
 const User         = require('../user/user.model');
 const { userRole } = require('../user/user.enum');
 const emailService = require('../../services/email.service');
+const activitySvc  = require('../activity/activity.service');
 
-// ── Domaines autorisés ────────────────────────────────────────
 const ALLOWED_DOMAINS  = ['saintjeaningenieur.org', 'saintjeanmanagement.org'];
 const INTERNAL_DOMAINS = ['nextlearn.org'];
 
@@ -30,26 +30,20 @@ function maskEmail(email) {
 
 class AuthService {
 
-    // ─────────────────────────────────────────────────────────
-    // REGISTER
-    // ─────────────────────────────────────────────────────────
-    async register(data) {
+    async register(data, req) {
         const { nom, prenom, email, password, classe, filiere } = data;
 
-        if (!nom || !prenom || !email || !password) {
+        if (!nom || !prenom || !email || !password)
             throw new Error('Nom, Prénom, email et mot de passe sont requis');
-        }
 
-        if (!isDomainAccepted(email)) {
+        if (!isDomainAccepted(email))
             throw new Error('Seules les adresses @saintjeaningenieur.org et @saintjeanmanagement.org sont acceptées');
-        }
 
         const existing = await User.findOne({ email: email.toLowerCase() });
         if (existing) throw new Error('Un compte avec cet email existe déjà');
 
-        if (password.length < 8) {
+        if (password.length < 8)
             throw new Error('Le mot de passe doit contenir au moins 8 caractères');
-        }
 
         const hashedPassword           = await bcrypt.hash(password, 12);
         const otpCode                  = generateOtp();
@@ -74,23 +68,27 @@ class AuthService {
             emailVerificationExpires,
         });
 
-        // Envoyer l'OTP
-        // En mode SMTP réel : bloquant (si ça échoue → on rollback)
-        // En mode log/Ethereal : toujours réussi, le code s'affiche dans les logs
+        await activitySvc.log({
+            action:      'USER_REGISTERED',
+            targetType:  'User',
+            targetId:    user._id,
+            targetName:  `${user.nom} ${user.prenom}`,
+            performedBy: user,
+            metadata:    { email: user.email, classe: user.classe, filiere: user.filiere },
+            req,
+        });
+
         try {
             await emailService.sendOtpEmail(user.email, otpCode, `${user.nom} ${user.prenom}`);
         } catch (emailError) {
             console.error('❌ OTP non envoyé:', emailError.message);
-            // Rollback uniquement si SMTP est configuré (vraie erreur)
             if (process.env.SMTP_USER && process.env.SMTP_PASS) {
                 await User.findByIdAndDelete(user._id);
                 throw new Error('Impossible d\'envoyer le code de vérification. Réessayez.');
             }
-            // Sans SMTP configuré : continuer quand même (dev / staging)
             console.warn(`   ⚠️  Code OTP pour ${user.email}: ${otpCode}`);
         }
 
-        // Email de bienvenue non bloquant
         emailService.sendVerificationEmail(user.email, emailVerificationToken, `${user.nom} ${user.prenom}`)
             .catch(e => console.error('⚠️ Email vérif:', e.message));
 
@@ -105,15 +103,11 @@ class AuthService {
         };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // LOGIN — Étape 1 : vérif mot de passe → envoi OTP
-    // ─────────────────────────────────────────────────────────
-    async login(email, password) {
+    async login(email, password, req) {
         if (!email || !password) throw new Error('Email et mot de passe sont requis');
 
-        if (!isDomainAccepted(email)) {
+        if (!isDomainAccepted(email))
             throw new Error('Accès réservé aux membres de l\'établissement Saint-Jean');
-        }
 
         const user = await User.findOne({ email: email.toLowerCase() })
             .select('+password +loginAttempts +lockUntil');
@@ -160,6 +154,16 @@ class AuthService {
 
         const { token: tempToken } = this._generateTemp(user._id);
 
+        await activitySvc.log({
+            action:      'LOGIN_OTP_SENT',
+            targetType:  'User',
+            targetId:    user._id,
+            targetName:  `${user.nom} ${user.prenom}`,
+            performedBy: user,
+            metadata:    { maskedEmail: maskEmail(user.email) },
+            req,
+        });
+
         return {
             success:           true,
             requiresTwoFactor: true,
@@ -169,10 +173,7 @@ class AuthService {
         };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // VERIFY OTP
-    // ─────────────────────────────────────────────────────────
-    async verifyLoginOtp(tempToken, code) {
+    async verifyLoginOtp(tempToken, code, req) {
         if (!tempToken || !code) throw new Error('Token et code requis');
 
         let decoded;
@@ -223,6 +224,16 @@ class AuthService {
             refreshToken: crypto.createHash('sha256').update(refreshToken).digest('hex'),
         });
 
+        await activitySvc.log({
+            action:      'LOGIN_SUCCESS',
+            targetType:  'User',
+            targetId:    user._id,
+            targetName:  `${user.nom} ${user.prenom}`,
+            performedBy: user,
+            metadata:    {},
+            req,
+        });
+
         return {
             success:      true,
             user:         this._formatUser(user),
@@ -232,9 +243,6 @@ class AuthService {
         };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // RESEND OTP
-    // ─────────────────────────────────────────────────────────
     async resendOtp(tempToken) {
         if (!tempToken) throw new Error('Token requis');
 
@@ -270,9 +278,6 @@ class AuthService {
         return { success: true, tempToken: newTempToken, message: 'Nouveau code envoyé' };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // REFRESH TOKEN
-    // ─────────────────────────────────────────────────────────
     async refreshAccessToken(refreshToken) {
         if (!refreshToken) throw new Error('Refresh token requis');
         const hashed = crypto.createHash('sha256').update(refreshToken).digest('hex');
@@ -285,32 +290,48 @@ class AuthService {
         return { success: true, token, refreshToken: newRT, user: this._formatUser(user) };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // PROFIL
-    // ─────────────────────────────────────────────────────────
-    async updateProfile(userId, data) {
+    async updateProfile(userId, data, req) {
         const allowed = ['nom', 'prenom', 'classe', 'filiere', 'bio', 'photoUrl'];
         const update  = {};
         allowed.forEach(f => { if (data[f] !== undefined) update[f] = data[f]; });
         const user = await User.findByIdAndUpdate(userId, update, { returnDocument: 'after', runValidators: true });
         if (!user) throw new Error('Utilisateur introuvable');
+
+        await activitySvc.log({
+            action:      'PROFILE_UPDATED',
+            targetType:  'User',
+            targetId:    user._id,
+            targetName:  `${user.nom} ${user.prenom}`,
+            performedBy: user,
+            metadata:    { fields: Object.keys(update) },
+            req,
+        });
+
         return { success: true, user: this._formatUser(user), message: 'Profil mis à jour' };
     }
 
-    async changePassword(userId, currentPassword, newPassword) {
+    async changePassword(userId, currentPassword, newPassword, req) {
         if (!currentPassword || !newPassword) throw new Error('Les deux mots de passe sont requis');
         if (newPassword.length < 8) throw new Error('Minimum 8 caractères');
         const user = await User.findById(userId).select('+password');
         if (!user) throw new Error('Utilisateur introuvable');
         if (!await bcrypt.compare(currentPassword, user.password)) throw new Error('Mot de passe actuel incorrect');
         await User.findByIdAndUpdate(userId, { password: await bcrypt.hash(newPassword, 12), refreshToken: null });
+
+        await activitySvc.log({
+            action:      'PASSWORD_CHANGED',
+            targetType:  'User',
+            targetId:    user._id,
+            targetName:  `${user.nom} ${user.prenom}`,
+            performedBy: user,
+            metadata:    {},
+            req,
+        });
+
         return { success: true, message: 'Mot de passe modifié avec succès' };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // FORGOT PASSWORD
-    // ─────────────────────────────────────────────────────────
-    async forgotPassword(email) {
+    async forgotPassword(email, req) {
         if (!email) throw new Error('Email requis');
         if (!isDomainAccepted(email)) throw new Error('Adresse email institutionnelle requise');
 
@@ -328,6 +349,16 @@ class AuthService {
             resetPasswordExpires: resetExpires,
         });
 
+        await activitySvc.log({
+            action:      'PASSWORD_RESET_REQUESTED',
+            targetType:  'User',
+            targetId:    user._id,
+            targetName:  `${user.nom} ${user.prenom}`,
+            performedBy: user,
+            metadata:    { email: user.email },
+            req,
+        });
+
         try {
             await emailService.sendPasswordResetEmail(user.email, resetToken, `${user.nom} ${user.prenom}`);
         } catch (e) {
@@ -342,10 +373,7 @@ class AuthService {
         return { success: true, message: 'Si cet email est enregistré, un lien a été envoyé.' };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // RESET PASSWORD
-    // ─────────────────────────────────────────────────────────
-    async resetPassword(token, newPassword) {
+    async resetPassword(token, newPassword, req) {
         if (!token || !newPassword) throw new Error('Token et nouveau mot de passe requis');
         if (newPassword.length < 8) throw new Error('Minimum 8 caractères');
 
@@ -364,12 +392,19 @@ class AuthService {
             refreshToken:         null,
         });
 
+        await activitySvc.log({
+            action:      'PASSWORD_RESET',
+            targetType:  'User',
+            targetId:    user._id,
+            targetName:  `${user.nom} ${user.prenom}`,
+            performedBy: user,
+            metadata:    {},
+            req,
+        });
+
         return { success: true, message: 'Mot de passe réinitialisé. Connectez-vous.' };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // VERIFY EMAIL
-    // ─────────────────────────────────────────────────────────
     async verifyEmail(token) {
         const user = await User.findOne({
             emailVerificationToken:   token,
@@ -387,9 +422,6 @@ class AuthService {
         return { success: true, message: 'Email vérifié avec succès' };
     }
 
-    // ─────────────────────────────────────────────────────────
-    // HELPERS
-    // ─────────────────────────────────────────────────────────
     _generateTokenPair(userId, role) {
         if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET non défini dans .env');
         const token = jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: '1d' });

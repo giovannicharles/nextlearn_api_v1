@@ -3,7 +3,7 @@ const authService = require('./auth.service');
 
 exports.register = async (req, res) => {
     try {
-        const result = await authService.register(req.body);
+        const result = await authService.register(req.body, req);
         res.status(201).json(result);
     } catch (err) {
         console.error('❌ register:', err.message);
@@ -16,7 +16,7 @@ exports.login = async (req, res) => {
         const { email, password } = req.body;
         if (!email || !password)
             return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
-        const result = await authService.login(email, password);
+        const result = await authService.login(email, password, req);
         res.json(result);
     } catch (err) {
         console.error('❌ login:', err.message);
@@ -29,7 +29,7 @@ exports.verifyLoginTwoFactor = async (req, res) => {
         const { tempToken, code } = req.body;
         if (!tempToken || !code)
             return res.status(400).json({ success: false, message: 'Token et code requis' });
-        const result = await authService.verifyLoginOtp(tempToken, code);
+        const result = await authService.verifyLoginOtp(tempToken, code, req);
         res.json(result);
     } catch (err) {
         console.error('❌ verifyOtp:', err.message);
@@ -74,7 +74,7 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
     try {
-        const result = await authService.updateProfile(req.user.id, req.body);
+        const result = await authService.updateProfile(req.user.id, req.body, req);
         res.json(result);
     } catch (err) {
         console.error('❌ updateProfile:', err.message);
@@ -85,7 +85,7 @@ exports.updateProfile = async (req, res) => {
 exports.changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
-        const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
+        const result = await authService.changePassword(req.user.id, currentPassword, newPassword, req);
         res.json(result);
     } catch (err) {
         res.status(400).json({ success: false, message: err.message });
@@ -96,7 +96,7 @@ exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ success: false, message: 'Email requis' });
-        const result = await authService.forgotPassword(email);
+        const result = await authService.forgotPassword(email, req);
         res.json(result);
     } catch (err) {
         console.error('❌ forgotPassword:', err.message);
@@ -109,7 +109,7 @@ exports.resetPassword = async (req, res) => {
         const { token, newPassword } = req.body;
         if (!token || !newPassword)
             return res.status(400).json({ success: false, message: 'Token et nouveau mot de passe requis' });
-        const result = await authService.resetPassword(token, newPassword);
+        const result = await authService.resetPassword(token, newPassword, req);
         res.json(result);
     } catch (err) {
         console.error('❌ resetPassword:', err.message);
