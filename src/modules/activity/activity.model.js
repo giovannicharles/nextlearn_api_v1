@@ -7,10 +7,10 @@ const activitySchema = new mongoose.Schema({
         enum: [
             'USER_CREATED','USER_UPDATED','USER_DELETED','USER_BLOCKED','USER_UNBLOCKED',
             'DOCUMENT_CREATED','DOCUMENT_UPDATED','DOCUMENT_DELETED',
-            'ADMIN_LOGIN','ADMIN_LOGOUT','ROLE_CHANGED','PASSWORD_RESET_SENT',
+            'ADMIN_LOGIN','ADMIN_LOGOUT','ROLE_CHANGED','PASSWORD_RESET_SENT','LOGIN_OTP_SENT','LOGIN_SUCCESS','PROFILE_UPDATED','PASSWORD_CHANGED','PASSWORD_RESET_REQUESTED','PASSWORD_RESET'
         ]
     },
-    targetType:  { type: String, enum: ['user','document','auth','system'], required: true },
+    targetType:  { type: String, enum: ['user','document','auth','system','student'], required: true },
     targetId:    { type: String, default: null },
     targetName:  { type: String, default: null },
     performedBy: {

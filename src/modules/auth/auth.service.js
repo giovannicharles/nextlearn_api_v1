@@ -156,7 +156,7 @@ class AuthService {
 
         await activitySvc.log({
             action:      'LOGIN_OTP_SENT',
-            targetType:  'User',
+            targetType:  'user',
             targetId:    user._id,
             targetName:  `${user.nom} ${user.prenom}`,
             performedBy: user,
@@ -226,7 +226,7 @@ class AuthService {
 
         await activitySvc.log({
             action:      'LOGIN_SUCCESS',
-            targetType:  'User',
+            targetType:  'user',
             targetId:    user._id,
             targetName:  `${user.nom} ${user.prenom}`,
             performedBy: user,
@@ -299,7 +299,7 @@ class AuthService {
 
         await activitySvc.log({
             action:      'PROFILE_UPDATED',
-            targetType:  'User',
+            targetType:  'user',
             targetId:    user._id,
             targetName:  `${user.nom} ${user.prenom}`,
             performedBy: user,
@@ -320,7 +320,7 @@ class AuthService {
 
         await activitySvc.log({
             action:      'PASSWORD_CHANGED',
-            targetType:  'User',
+            targetType:  'user',
             targetId:    user._id,
             targetName:  `${user.nom} ${user.prenom}`,
             performedBy: user,
@@ -351,7 +351,7 @@ class AuthService {
 
         await activitySvc.log({
             action:      'PASSWORD_RESET_REQUESTED',
-            targetType:  'User',
+            targetType:  'user',
             targetId:    user._id,
             targetName:  `${user.nom} ${user.prenom}`,
             performedBy: user,
@@ -394,7 +394,7 @@ class AuthService {
 
         await activitySvc.log({
             action:      'PASSWORD_RESET',
-            targetType:  'User',
+            targetType:  'user',
             targetId:    user._id,
             targetName:  `${user.nom} ${user.prenom}`,
             performedBy: user,
