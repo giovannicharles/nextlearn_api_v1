@@ -9,7 +9,7 @@ export class OfflineController {
   async addDownload(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     const result = await this.offlineService.addDownload(userId, documentId);
     successResponse(res, result, 201);
   }
@@ -17,7 +17,7 @@ export class OfflineController {
   async removeDownload(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     await this.offlineService.removeDownload(userId, documentId);
     successResponse(res, { message: 'Téléchargement supprimé' });
   }
@@ -33,7 +33,7 @@ export class OfflineController {
   async checkDownloaded(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     const isDownloaded = await this.offlineService.isDownloaded(userId, documentId);
     successResponse(res, { isDownloaded });
   }

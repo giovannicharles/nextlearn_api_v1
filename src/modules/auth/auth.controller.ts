@@ -63,7 +63,8 @@ export class AuthController {
   async logout(req: Request, res: Response): Promise<void> {
     const userId = (req as any).user?.id;
     if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
     await this.authService.logout(userId);
     successResponse(res, { message: 'Déconnexion réussie' });
@@ -72,7 +73,8 @@ export class AuthController {
   async getMe(req: Request, res: Response): Promise<void> {
     const userId = (req as any).user?.id;
     if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
     const result = await this.authService.getMe(userId);
     successResponse(res, result);

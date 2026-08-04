@@ -17,7 +17,7 @@ export class NotificationController {
   async markAsRead(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.notificationService.markAsRead(id, userId);
     successResponse(res, { message: 'Notification marquée comme lue' });
   }
@@ -39,7 +39,7 @@ export class NotificationController {
   async deleteNotification(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.notificationService.deleteNotification(id, userId);
     successResponse(res, { message: 'Notification supprimée' });
   }

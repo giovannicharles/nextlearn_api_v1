@@ -9,8 +9,8 @@ export class NotificationService {
       userId,
       type: type as any,
       titre: title,
-      message,
-      data,
+      corps: message,
+      metadata: data,
       lu: false,
       createdAt: new Date(),
     });

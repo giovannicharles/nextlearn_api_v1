@@ -9,7 +9,7 @@ export class FavoriteController {
   async addFavorite(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     const result = await this.favoriteService.addFavorite(userId, documentId);
     successResponse(res, result, 201);
   }
@@ -17,7 +17,7 @@ export class FavoriteController {
   async removeFavorite(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     await this.favoriteService.removeFavorite(userId, documentId);
     successResponse(res, { message: 'Favori supprimé' });
   }
@@ -33,7 +33,7 @@ export class FavoriteController {
   async checkFavorite(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     const isFavorite = await this.favoriteService.isFavorite(userId, documentId);
     successResponse(res, { isFavorite });
   }

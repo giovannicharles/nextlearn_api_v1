@@ -22,20 +22,20 @@ export class DocumentController {
   }
 
   async getDocumentById(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const userId = (req as AuthRequest).user?.id;
     const result = await this.documentService.getDocumentById(id, userId);
     successResponse(res, result);
   }
 
   async recordView(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.documentService.incrementViews(id);
     successResponse(res, { message: 'Vue enregistrée' });
   }
 
   async downloadDocument(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const result = await this.documentService.downloadDocument(id);
     successResponse(res, result);
   }
@@ -82,19 +82,19 @@ export class DocumentController {
   }
 
   async updateDocument(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const result = await this.documentService.updateDocument(id, req.body);
     successResponse(res, result);
   }
 
   async deleteDocument(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.documentService.deleteDocument(id);
     successResponse(res, { message: 'Document supprimé' });
   }
 
   async getSignedUrl(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const url = await this.documentService.getSignedUrl(id);
     successResponse(res, { url });
   }
@@ -102,7 +102,7 @@ export class DocumentController {
   async rateDocument(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { id } = req.params;
+    const id = String(req.params.id);
     const validatedData = ratingSchema.parse(req.body);
     await this.documentService.rateDocument(userId, id, validatedData.note);
     successResponse(res, { message: 'Note enregistrée' });

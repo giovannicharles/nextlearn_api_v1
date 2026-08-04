@@ -15,7 +15,7 @@ export class EpreuveController {
   }
 
   async getEpreuveById(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const result = await this.epreuveService.getEpreuveById(id);
     successResponse(res, result);
   }
@@ -26,32 +26,32 @@ export class EpreuveController {
   }
 
   async updateEpreuve(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const result = await this.epreuveService.updateEpreuve(id, req.body);
     successResponse(res, result);
   }
 
   async deleteEpreuve(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.epreuveService.deleteEpreuve(id);
     successResponse(res, { message: 'Épreuve supprimée' });
   }
 
   async getSignedUrl(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { type } = req.query;
     const url = await this.epreuveService.getSignedUrl(id, type as 'epreuve' | 'corrige');
     successResponse(res, { url });
   }
 
   async incrementViews(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.epreuveService.incrementViews(id);
     successResponse(res, { message: 'Vues incrémentées' });
   }
 
   async downloadEpreuve(req: AuthRequest, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { type } = req.query;
     const url = await this.epreuveService.downloadEpreuve(id, type as 'epreuve' | 'corrige');
     successResponse(res, { url, expiresIn: 3600 });

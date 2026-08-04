@@ -17,13 +17,13 @@ export class ReferencesController {
   }
 
   async updateUniversite(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const result = await this.referencesService.updateUniversite(id, req.body);
     successResponse(res, result);
   }
 
   async deleteUniversite(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.referencesService.deleteUniversite(id);
     successResponse(res, { message: 'Université supprimée' });
   }
@@ -40,13 +40,13 @@ export class ReferencesController {
   }
 
   async updateFiliere(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const result = await this.referencesService.updateFiliere(id, req.body);
     successResponse(res, result);
   }
 
   async deleteFiliere(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.referencesService.deleteFiliere(id);
     successResponse(res, { message: 'Filière supprimée' });
   }
@@ -63,13 +63,13 @@ export class ReferencesController {
   }
 
   async updateMatiere(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const result = await this.referencesService.updateMatiere(id, req.body);
     successResponse(res, result);
   }
 
   async deleteMatiere(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
+    const id = String(req.params.id);
     await this.referencesService.deleteMatiere(id);
     successResponse(res, { message: 'Matière supprimée' });
   }

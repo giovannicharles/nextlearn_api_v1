@@ -9,7 +9,7 @@ export class ProgressController {
   async getLectureProgress(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     const result = await this.progressService.getLectureProgress(userId, documentId);
     successResponse(res, result);
   }
@@ -17,7 +17,7 @@ export class ProgressController {
   async updateLectureProgress(req: AuthRequest, res: Response): Promise<void> {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
-    const { documentId } = req.params;
+    const documentId = String(req.params.documentId);
     const result = await this.progressService.updateLectureProgress(userId, documentId, req.body);
     successResponse(res, result);
   }
