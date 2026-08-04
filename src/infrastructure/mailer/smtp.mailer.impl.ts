@@ -6,9 +6,10 @@ export class SmtpMailerService implements MailerService {
   private transporter: nodemailer.Transporter | null = null;
 
   constructor() {
-    if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS) {
+    const smtpHost = env.SMTP_HOST || (env.SMTP_USER?.endsWith('@gmail.com') ? 'smtp.gmail.com' : undefined);
+    if (smtpHost && env.SMTP_USER && env.SMTP_PASS) {
       this.transporter = nodemailer.createTransport({
-        host: env.SMTP_HOST,
+        host: smtpHost,
         port: env.SMTP_PORT,
         secure: env.SMTP_PORT === 465,
         auth: {

@@ -36,6 +36,7 @@ import { NotificationRepository } from './infrastructure/repositories/notificati
 import { SyncRepository } from './infrastructure/repositories/sync.repository.impl';
 import { UserRepository } from './infrastructure/repositories/user.repository.impl';
 import { SendGridMailerService } from './infrastructure/mailer/sendgrid.mailer.impl';
+import { SmtpMailerService } from './infrastructure/mailer/smtp.mailer.impl';
 import { CloudinaryStorageService } from './infrastructure/storage/cloudinary.storage.impl';
 import env from './config/env';
 
@@ -88,8 +89,10 @@ app.get('/api-docs.json', (_req, res) => {
   res.send(swaggerSpec);
 });
 
-// Dependency Injection
-const mailerService = new SendGridMailerService();
+// Dependency Injection — Mailer: SendGrid si API key, sinon SMTP
+const mailerService = env.SENDGRID_API_KEY
+  ? new SendGridMailerService()
+  : new SmtpMailerService();
 const storageService = new CloudinaryStorageService();
 
 const authRepository = new AuthRepository();

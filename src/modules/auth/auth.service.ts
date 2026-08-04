@@ -385,8 +385,10 @@ export class AuthService {
   }
 
   private async generateTokenPair(userId: string, role: string = 'USER'): Promise<{ accessToken: string; refreshToken: string }> {
-    const accessToken = jwt.sign({ id: userId, role }, env.JWT_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRES_IN } as any);
-    const refreshToken = jwt.sign({ id: userId, type: 'refresh' }, env.JWT_SECRET, { expiresIn: env.JWT_REFRESH_EXPIRES_IN } as any);
+    const accessExpiry = env.JWT_ACCESS_EXPIRES_IN || env.JWT_EXPIRES_IN || '15m';
+    const refreshExpiry = env.JWT_REFRESH_EXPIRES_IN || '30d';
+    const accessToken = jwt.sign({ id: userId, role }, env.JWT_SECRET, { expiresIn: accessExpiry } as any);
+    const refreshToken = jwt.sign({ id: userId, type: 'refresh' }, env.JWT_SECRET, { expiresIn: refreshExpiry } as any);
     return { accessToken, refreshToken };
   }
 

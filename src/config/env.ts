@@ -8,8 +8,9 @@ const envSchema = z.object({
   PORT: z.string().default('5000').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
-  // MongoDB
-  MONGODB_URI: z.string().url('Invalid MongoDB URI'),
+  // MongoDB — accepte MONGO_URI (v1) ou MONGODB_URI (v2)
+  MONGO_URI: z.string().optional(),
+  MONGODB_URI: z.string().optional(),
 
   // Redis (optionnel)
   REDIS_HOST: z.string().optional(),
@@ -17,7 +18,8 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
 
   // JWT
-  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+  JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
+  JWT_EXPIRES_IN: z.string().default('7d'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
@@ -27,7 +29,7 @@ const envSchema = z.object({
   CLOUDINARY_API_SECRET: z.string().min(1, 'CLOUDINARY_API_SECRET is required'),
   CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
 
-  // Email
+  // Email — SendGrid ou SMTP
   SENDGRID_API_KEY: z.string().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().default('587').transform(Number),
@@ -50,7 +52,17 @@ const envSchema = z.object({
 
 const validateEnv = () => {
   try {
-    return envSchema.parse(process.env);
+    const parsed = envSchema.parse(process.env);
+
+    // Résoudre l'URI MongoDB : MONGO_URI (v1) ou MONGODB_URI (v2)
+    const mongoUri = parsed.MONGO_URI || parsed.MONGODB_URI;
+    if (!mongoUri) {
+      console.error('❌ Configuration validation failed:');
+      console.error('   - MONGO_URI or MONGODB_URI is required');
+      throw new Error('Environment configuration is invalid. Check .env file.');
+    }
+
+    return { ...parsed, MONGODB_URI: mongoUri };
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error('❌ Configuration validation failed:');
