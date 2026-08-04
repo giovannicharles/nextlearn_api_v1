@@ -82,6 +82,17 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// Root route
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'NextLearn API v2',
+    version: '2.0.0',
+    status: 'OK',
+    docs: '/api-docs',
+    health: '/health',
+  });
+});
+
 // Swagger Documentation
 app.use('/api-docs', swaggerUiServe, swaggerUiSetup(swaggerSpec));
 app.get('/api-docs.json', (_req, res) => {
