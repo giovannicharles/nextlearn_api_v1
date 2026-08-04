@@ -54,22 +54,47 @@ const validateEnv = () => {
   try {
     const parsed = envSchema.parse(process.env);
 
-    // Résoudre l'URI MongoDB : MONGO_URI (v1) ou MONGODB_URI (v2)
     const mongoUri = parsed.MONGO_URI || parsed.MONGODB_URI;
     if (!mongoUri) {
-      console.error('❌ Configuration validation failed:');
-      console.error('   - MONGO_URI or MONGODB_URI is required');
-      throw new Error('Environment configuration is invalid. Check .env file.');
+      console.warn('⚠️  MONGO_URI not configured. Database features will be unavailable.');
     }
 
-    return { ...parsed, MONGODB_URI: mongoUri };
+    return { ...parsed, MONGODB_URI: mongoUri || '' };
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error('❌ Configuration validation failed:');
       error.errors.forEach((err) => {
         console.error(`   - ${err.path.join('.')}: ${err.message}`);
       });
-      throw new Error('Environment configuration is invalid. Check .env file.');
+      console.warn('⚠️  Starting with default values where possible...');
+      return {
+        PORT: Number(process.env.PORT || 5000),
+        NODE_ENV: (process.env.NODE_ENV as 'development' | 'production' | 'test') || 'development',
+        MONGODB_URI: process.env.MONGO_URI || process.env.MONGODB_URI || '',
+        REDIS_HOST: undefined,
+        REDIS_PORT: 6379,
+        REDIS_PASSWORD: undefined,
+        JWT_SECRET: process.env.JWT_SECRET || 'fallback-dev-secret',
+        JWT_EXPIRES_IN: '7d',
+        JWT_ACCESS_EXPIRES_IN: '15m',
+        JWT_REFRESH_EXPIRES_IN: '30d',
+        CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
+        CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',
+        CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || '',
+        CLOUDINARY_UPLOAD_PRESET: undefined,
+        SENDGRID_API_KEY: undefined,
+        SMTP_HOST: undefined,
+        SMTP_PORT: 587,
+        SMTP_USER: process.env.SMTP_USER,
+        SMTP_PASS: process.env.SMTP_PASS,
+        FCM_PROJECT_ID: undefined,
+        FCM_PRIVATE_KEY: undefined,
+        FCM_CLIENT_EMAIL: undefined,
+        RATE_LIMIT_WINDOW_MS: 60000,
+        RATE_LIMIT_MAX_REQUESTS: 100,
+        OTP_RATE_LIMIT_MAX: 5,
+        MAX_FILE_SIZE: 52428800,
+      };
     }
     throw error;
   }

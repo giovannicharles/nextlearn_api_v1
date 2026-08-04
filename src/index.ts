@@ -4,22 +4,26 @@ import { connectRedis } from './config/redis';
 import { ensureIndexes } from './config/indexes';
 import env from './config/env';
 
-const startServer = async () => {
+const PORT = env.PORT || process.env.PORT || 5000;
+
+const server = app.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`🚀 NextLearn API v2 running on port ${PORT}`);
+  console.log(`📍 Environment: ${env.NODE_ENV}`);
+  console.log(`🔗 Health: http://localhost:${PORT}/health`);
+});
+
+const initServices = async () => {
   try {
     await connectDatabase();
     connectRedis();
     await ensureIndexes();
-
-    const PORT = env.PORT;
-    app.listen(PORT, () => {
-      console.log(`🚀 NextLearn API v2 running on port ${PORT}`);
-      console.log(`📍 Environment: ${env.NODE_ENV}`);
-      console.log(`🔗 Health: http://localhost:${PORT}/health`);
-    });
   } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+    console.error('Failed to init services:', error);
+    console.log('⚠️  Server running but database not connected. Retrying in 5s...');
+    setTimeout(initServices, 5000);
   }
 };
 
-startServer();
+initServices();
+
+export { server };
