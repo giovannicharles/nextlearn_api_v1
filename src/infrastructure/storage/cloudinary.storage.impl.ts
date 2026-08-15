@@ -1,9 +1,7 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { StorageService, UploadResult } from './storage.interface';
-import * as pdfParseModule from 'pdf-parse';
+import { PDFParse } from 'pdf-parse';
 import env from '../../config/env';
-
-const pdfParse: any = (pdfParseModule as any).default || pdfParseModule;
 
 cloudinary.config({
   cloud_name: env.CLOUDINARY_CLOUD_NAME,
@@ -68,14 +66,17 @@ export class CloudinaryStorageService implements StorageService {
   }
 
   async extractPdfMetadata(fileBuffer: Buffer): Promise<{ pages: number; size: number }> {
+    const parser = new PDFParse({ data: fileBuffer });
     try {
-      const data = await pdfParse(fileBuffer);
+      const info = await parser.getInfo();
       return {
-        pages: data.numpages,
+        pages: info.total,
         size: fileBuffer.length,
       };
     } catch (error) {
       throw new Error(`Failed to extract PDF metadata: ${error instanceof Error ? error.message : error}`);
+    } finally {
+      await parser.destroy();
     }
   }
 }

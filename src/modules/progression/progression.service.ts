@@ -5,20 +5,24 @@ export class ProgressionService {
 
   async getStats(userId: string) {
     const stats = await this.progressionRepository.getStudyStats(userId);
-    const streak = await this.progressionRepository.getStreak(userId);
+    const streak = await this.progressionRepository.getStreakDetail(userId);
     const docsLus = await this.progressionRepository.getDocsLusCount(userId);
     const matiereTop = await this.progressionRepository.getMatiereTop(userId);
     return {
       totalMinutes: Math.round(stats.totalDuration / 60),
       sessionCount: stats.totalSessions,
-      streak,
+      streak: streak.current,
+      // Permet à l'UI de distinguer « série en cours, action du jour déjà
+      // faite » de « série en cours, mais il reste à lire aujourd'hui ».
+      streakDoneToday: streak.doneToday,
+      streakLastActiveDay: streak.lastActiveDay,
       docsLus,
       matiereTop,
     };
   }
 
   async getStreak(userId: string) {
-    return await this.progressionRepository.getStreak(userId);
+    return await this.progressionRepository.getStreakDetail(userId);
   }
 
   async getWeekActivity(userId: string) {

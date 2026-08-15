@@ -2,7 +2,9 @@ import { Router } from 'express';
 import multer from 'multer';
 import { DocumentController } from './document.controller';
 import { authGuard, adminGuard } from '../../middleware/auth.guard';
+import { verifiedGuard } from '../../middleware/verified.guard';
 import { cache } from '../../middleware/cache.middleware';
+import { academicFilter } from '../../middleware/academic-filter.middleware';
 import env from '../../config/env';
 
 const upload = multer({
@@ -50,7 +52,7 @@ export const createDocumentRoutes = (documentController: DocumentController): Ro
    *             schema:
    *               $ref: '#/components/schemas/PaginatedResponse'
    */
-  router.get('/', cache('docs:list', 120), (req, res) => documentController.listDocuments(req, res));
+  router.get('/', academicFilter, (req, res) => documentController.listDocuments(req, res));
   /**
    * @swagger
    * /api/documents/search:
@@ -150,7 +152,9 @@ export const createDocumentRoutes = (documentController: DocumentController): Ro
    *       200:
    *         description: URL signée (TTL 1h)
    */
-  router.get('/:id/signed-url', authGuard, (req, res) => documentController.getSignedUrl(req, res));
+  // verifiedGuard : un compte en attente de vérification n'accède à aucun
+  // fichier. Sans effet sur les comptes standards, qui n'ont pas de dossier.
+  router.get('/:id/signed-url', authGuard, verifiedGuard, (req, res) => documentController.getSignedUrl(req, res));
   /**
    * @swagger
    * /api/documents/{id}/view:
@@ -184,7 +188,7 @@ export const createDocumentRoutes = (documentController: DocumentController): Ro
    *       200:
    *         description: URL de téléchargement signée
    */
-  router.post('/:id/download', authGuard, (req, res) => documentController.downloadDocument(req, res));
+  router.post('/:id/download', authGuard, verifiedGuard, (req, res) => documentController.downloadDocument(req, res));
   /**
    * @swagger
    * /api/documents:
@@ -229,7 +233,10 @@ export const createDocumentRoutes = (documentController: DocumentController): Ro
    *       200:
    *         description: Document mis à jour
    */
-  router.put('/:id', authGuard, adminGuard, (req, res) => documentController.updateDocument(req, res));
+  // Même parseur multipart que sur /api/admin/documents/:id : les deux routes
+  // partagent le contrôleur, elles doivent accepter le même format d'entrée.
+  // multer laisse passer les requêtes JSON sans y toucher.
+  router.put('/:id', authGuard, adminGuard, upload.single('file'), (req, res) => documentController.updateDocument(req, res));
   /**
    * @swagger
    * /api/documents/{id}:

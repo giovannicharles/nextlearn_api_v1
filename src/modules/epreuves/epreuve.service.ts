@@ -2,6 +2,8 @@ import { IEpreuveRepository } from './domain/epreuve.repository.interface';
 import { StorageService } from '../../infrastructure/storage/storage.interface';
 import { NotFoundError } from '../../shared/errors/index';
 import { parsePagination, createPaginationMeta } from '../../shared/utils/pagination';
+import { Matiere, EpreuveRating } from '../../models/index';
+import { DocumentNotifierService } from '../notifications/document-notifier.service';
 
 export class EpreuveService {
   constructor(
@@ -39,11 +41,32 @@ export class EpreuveService {
       urlCorrigePdf = uploadResult.url;
     }
 
-    return await this.epreuveRepository.createEpreuve({
+    const epreuve = await this.epreuveRepository.createEpreuve({
       ...data,
       urlPdf,
       urlCorrigePdf,
     });
+
+    // Même ciblage que pour les documents : l'épreuve est publiée depuis le
+    // même formulaire admin, elle doit notifier la même audience.
+    try {
+      const matiere = await Matiere.findById(epreuve.matiereId).select('nom').lean();
+      await DocumentNotifierService.notifyNewDocument(
+        {
+          id: String(epreuve._id),
+          titre: `Épreuve ${epreuve.annee}`,
+          matiereNom: (matiere as any)?.nom,
+          niveau: epreuve.niveau,
+          filiereId: epreuve.filiereId,
+          universiteId: epreuve.universiteId,
+        },
+        'epreuve',
+      );
+    } catch (error) {
+      console.error('[NOTIFICATION] Échec du ciblage après publication d’épreuve :', error);
+    }
+
+    return epreuve;
   }
 
   async updateEpreuve(id: string, data: any) {
@@ -80,6 +103,19 @@ export class EpreuveService {
 
   async incrementViews(id: string): Promise<void> {
     await this.epreuveRepository.incrementViews(id);
+  }
+
+  async rateEpreuve(userId: string, epreuveId: string, note: number) {
+    const epreuve = await this.epreuveRepository.findById(epreuveId);
+    if (!epreuve) throw new NotFoundError('Épreuve');
+
+    const existingRating = await this.epreuveRepository.getUserRating(userId, epreuveId);
+    if (existingRating) {
+      await EpreuveRating.findByIdAndUpdate(existingRating.id, { note });
+    } else {
+      await this.epreuveRepository.createRating({ userId, epreuveId, note });
+    }
+    await this.epreuveRepository.updateEpreuveRating(epreuveId);
   }
 
   async downloadEpreuve(id: string, type: 'epreuve' | 'corrige' = 'epreuve') {

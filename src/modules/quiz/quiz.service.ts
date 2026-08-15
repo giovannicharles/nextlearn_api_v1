@@ -18,7 +18,14 @@ export class QuizService {
     const quiz = await this.quizRepository.findById(id);
     if (!quiz) throw new NotFoundError('Quiz');
     const questions = await this.quizRepository.listQuestions(id);
-    return { ...quiz.toObject(), questions };
+    // On ne renvoie pas la bonne réponse avant soumission (elle n'est
+    // dévoilée que dans la réponse de submitQuiz, voir plus bas).
+    const safeQuestions = questions.map((q: any) => {
+      const obj = q.toObject ? q.toObject() : q;
+      const { bonneReponseIndex, explication, ...rest } = obj;
+      return rest;
+    });
+    return { ...quiz.toObject(), questions: safeQuestions };
   }
 
   async createQuiz(data: any) {
@@ -41,7 +48,7 @@ export class QuizService {
     await this.quizRepository.deleteQuestion(id);
   }
 
-  async submitQuiz(userId: string, quizId: string, answers: any[]) {
+  async submitQuiz(userId: string, quizId: string, answers: any[], dureeSecondes: number = 0) {
     const quiz = await this.quizRepository.findById(quizId);
     if (!quiz) throw new NotFoundError('Quiz');
 
@@ -53,28 +60,36 @@ export class QuizService {
       quizId,
       score: 0,
       totalQuestions: questions.length,
-      duration: 0,
-      date: new Date(),
+      dureeSecondes,
     } as any);
 
+    const details: any[] = [];
     for (const answer of answers) {
-      const question = questions.find((q: any) => q.id === answer.questionId);
+      const question = questions.find((q: any) => String(q.id ?? q._id) === String(answer.questionId));
       if (question) {
-        const isCorrect = (question as any).correctAnswer === answer.answer;
+        const bonneReponseIndex = (question as any).bonneReponseIndex;
+        const isCorrect = bonneReponseIndex === answer.reponseIndex;
         if (isCorrect) correctCount++;
         await this.quizRepository.addAnswer({
           quizResultId: quizResult.id,
           questionId: answer.questionId,
-          answer: answer.answer,
-          isCorrect: isCorrect,
+          reponseIndex: answer.reponseIndex,
+          estCorrect: isCorrect,
         } as any);
+        details.push({
+          questionId: answer.questionId,
+          estCorrect: isCorrect,
+          bonneReponseIndex,
+          explication: (question as any).explication,
+        });
       }
     }
 
-    const score = (correctCount / questions.length) * 100;
-    const updatedResult = await this.quizRepository.updateQuizResult(quizResult.id, { score } as any);
+    // score = nombre de bonnes réponses (cohérent avec totalQuestions, pas
+    // un pourcentage — voir contrat documenté dans BACKEND_SPECIFICATION.md).
+    const updatedResult = await this.quizRepository.updateQuizResult(quizResult.id, { score: correctCount } as any);
 
-    return updatedResult;
+    return { ...updatedResult.toObject(), details };
   }
 
   async listUserResults(userId: string, options: any) {

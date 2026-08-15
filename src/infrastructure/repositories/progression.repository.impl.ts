@@ -1,5 +1,6 @@
 import { StudySession, Badge, Document, Matiere } from '../../models/index';
 import { IProgressionRepository } from '../../modules/progression/domain/progression.repository.interface';
+import { computeStreak, StreakResult } from '../../shared/utils/streak';
 
 export class ProgressionRepository implements IProgressionRepository {
   async getStudyStats(userId: string): Promise<{ totalSessions: number; totalDuration: number; totalPagesRead: number }> {
@@ -19,32 +20,29 @@ export class ProgressionRepository implements IProgressionRepository {
   }
 
   async getStreak(userId: string): Promise<number> {
-    const sessions = await StudySession.find({ userId })
+    return (await this.getStreakDetail(userId)).current;
+  }
+
+  /**
+   * Streak détaillé.
+   *
+   * L'ancien calcul était faux : il comparait l'écart entre deux sessions
+   * successives à la longueur courante du streak, si bien qu'une série de trois
+   * jours consécutifs renvoyait 2 et s'arrêtait là. Il bornait de surcroît la
+   * recherche aux 30 dernières **sessions** — et non aux 30 derniers jours —,
+   * donc un utilisateur assidu perdait son historique au bout de quelques
+   * jours, et il découpait les journées dans le fuseau du serveur.
+   */
+  async getStreakDetail(userId: string): Promise<StreakResult> {
+    // Fenêtre large mais bornée : un streak plus long que ça est déjà exceptionnel.
+    const since = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+    const sessions = await StudySession.find({ userId, date: { $gte: since } })
+      .select('date')
       .sort({ date: -1 })
-      .limit(30)
+      .lean()
       .exec();
 
-    if (sessions.length === 0) return 0;
-
-    let streak = 0;
-    let currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0);
-
-    for (const session of sessions) {
-      const sessionDate = new Date(session.date);
-      sessionDate.setHours(0, 0, 0, 0);
-
-      const diffDays = Math.floor((currentDate.getTime() - sessionDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      if (diffDays === streak) {
-        streak++;
-        currentDate = new Date(sessionDate);
-      } else if (diffDays > streak) {
-        break;
-      }
-    }
-
-    return streak;
+    return computeStreak(sessions.map((s: any) => new Date(s.date)));
   }
 
   async getBadges(userId: string): Promise<any[]> {
@@ -79,9 +77,8 @@ export class ProgressionRepository implements IProgressionRepository {
     const dureeByMatiere: Record<string, number> = {};
     for (const session of sessions as any[]) {
       const doc = documents.find((d: any) => d._id.toString() === session.documentId);
-      if (!doc) continue;
-      const matiereId = doc.matiereId?.toString();
-      if (!matiereId) continue;
+      if (!doc || doc.matiereId == null) continue;
+      const matiereId = String(doc.matiereId);
       dureeByMatiere[matiereId] = (dureeByMatiere[matiereId] || 0) + session.dureeSecondes;
     }
 
@@ -132,16 +129,15 @@ export class ProgressionRepository implements IProgressionRepository {
     const secondsByMatiere: Record<string, number> = {};
     for (const session of sessions as any[]) {
       const doc = documents.find((d: any) => d._id.toString() === session.documentId);
-      if (!doc) continue;
-      const matiereId = doc.matiereId?.toString();
-      if (!matiereId) continue;
+      if (!doc || doc.matiereId == null) continue;
+      const matiereId = String(doc.matiereId);
       secondsByMatiere[matiereId] = (secondsByMatiere[matiereId] || 0) + session.dureeSecondes;
     }
 
     return Object.entries(secondsByMatiere)
       .map(([matiereId, seconds]) => {
         const matiere = matieres.find((m: any) => m._id.toString() === matiereId);
-        return { matiere: matiere?.nom || 'Inconnu', minutes: Math.round(seconds / 60) };
+        return { matiere: matiere?.nom || 'Autre', minutes: Math.round(seconds / 60) };
       })
       .sort((a, b) => b.minutes - a.minutes)
       .slice(0, 5);

@@ -1,22 +1,21 @@
 import { Favorite } from '../../models/index';
 import { IFavoriteRepository } from '../../modules/favorites/domain/favorite.repository.interface';
-import { ConflictError, NotFoundError } from '../../shared/errors/index';
 
 export class FavoriteRepository implements IFavoriteRepository {
+  // Ajouter/retirer un favori est idempotent : le client rejoue ces appels
+  // depuis sa file de synchronisation au retour du réseau, et le même document
+  // peut être mis en favori depuis deux appareils. Un 409 ou un 404 sur un
+  // rejeu bloquerait l'opération en file indéfiniment.
   async addFavorite(userId: string, documentId: string): Promise<any> {
-    try {
-      return await Favorite.create({ userId, documentId });
-    } catch (error: any) {
-      if (error.code === 11000) {
-        throw new ConflictError('Document déjà en favoris');
-      }
-      throw error;
-    }
+    return await Favorite.findOneAndUpdate(
+      { userId, documentId },
+      { $setOnInsert: { userId, documentId } },
+      { upsert: true, new: true },
+    ).exec();
   }
 
   async removeFavorite(userId: string, documentId: string): Promise<void> {
-    const favorite = await Favorite.findOneAndDelete({ userId, documentId }).exec();
-    if (!favorite) throw new NotFoundError('Favori');
+    await Favorite.findOneAndDelete({ userId, documentId }).exec();
   }
 
   async listUserFavorites(userId: string, options: any): Promise<{ favorites: any[]; total: number }> {

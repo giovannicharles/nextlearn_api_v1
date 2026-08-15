@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { DocumentService } from './document.service';
-import { createDocumentSchema, ratingSchema } from './dto/index';
+import { createDocumentSchema, updateDocumentSchema, ratingSchema } from './dto/index';
 import { successResponse } from '../../shared/http/response';
 import { AuthRequest } from '../../middleware/auth.guard';
 
@@ -8,8 +8,8 @@ export class DocumentController {
   constructor(private documentService: DocumentService) {}
 
   async listDocuments(req: Request, res: Response): Promise<void> {
-    const { page, limit, matiereId, niveau, type, search } = req.query;
-    const filters = { matiereId, niveau, type };
+    const { page, limit, matiereId, niveau, type, search, universiteId, filiereId } = req.query;
+    const filters = { matiereId, niveau, type, universiteId, filiereId };
     const options = { page: Number(page), limit: Number(limit) };
 
     if (search) {
@@ -54,7 +54,7 @@ export class DocumentController {
 
   async getRecommended(req: AuthRequest, res: Response): Promise<void> {
     const limit = req.query.limit ? Number(req.query.limit) : 6;
-    const universiteId = req.query.universiteId ? Number(req.query.universiteId) : undefined;
+    const universiteId = req.query.universiteId as string | undefined;
     const niveau = req.query.niveau as string | undefined;
     const result = await this.documentService.getRecommended(universiteId, niveau, limit);
     successResponse(res, result);
@@ -83,7 +83,9 @@ export class DocumentController {
 
   async updateDocument(req: Request, res: Response): Promise<void> {
     const id = String(req.params.id);
-    const result = await this.documentService.updateDocument(id, req.body);
+    const validatedData = updateDocumentSchema.parse(req.body ?? {});
+    const file = (req as any).file;
+    const result = await this.documentService.updateDocument(id, validatedData, file?.buffer);
     successResponse(res, result);
   }
 

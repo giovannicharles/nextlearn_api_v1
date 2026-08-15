@@ -21,21 +21,23 @@ export const globalRateLimiter = rateLimit({
 
 /**
  * Auth rate limiter — stricter limits for auth endpoints.
- * 5 requests per 15 minutes per IP for sensitive operations.
+ * Disabled in development for easier testing.
  */
-export const authRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: env.OTP_RATE_LIMIT_MAX,
-  standardHeaders: true,
-  legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
-  message: {
-    error: {
-      code: 'RATE_LIMIT_EXCEEDED',
-      message: 'Trop de tentatives d\'authentification. Veuillez réessayer dans 15 minutes.',
-    },
-  },
-});
+export const authRateLimiter = env.NODE_ENV === 'development' 
+  ? rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, skip: () => true })
+  : rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: env.OTP_RATE_LIMIT_MAX,
+      standardHeaders: true,
+      legacyHeaders: false,
+      validate: { xForwardedForHeader: false },
+      message: {
+        error: {
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Trop de tentatives d\'authentification. Veuillez réessayer dans 15 minutes.',
+        },
+      },
+    });
 
 /**
  * OTP rate limiter — prevents OTP abuse.

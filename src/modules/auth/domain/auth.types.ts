@@ -53,7 +53,10 @@ export interface UserResponse {
   niveau: string;
   langue: string;
   role: string;
+  status?: string;
   avatarUrl: string | null;
+  isPremium?: boolean;
+  verificationStatus?: string;
 }
 
 export interface TempTokenResponse {

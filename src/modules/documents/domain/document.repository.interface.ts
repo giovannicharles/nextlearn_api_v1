@@ -11,7 +11,7 @@ export interface IDocumentRepository {
   incrementDownloads(id: string): Promise<void>;
   getPopular(limit: number): Promise<IDocument[]>;
   getRecent(limit: number): Promise<IDocument[]>;
-  getRecommended(universiteId: number | undefined, niveau: string | undefined, limit: number): Promise<IDocument[]>;
+  getRecommended(universiteId: string | undefined, niveau: string | undefined, limit: number): Promise<IDocument[]>;
   
   // Ratings
   createRating(data: Partial<IDocumentRating>): Promise<IDocumentRating>;

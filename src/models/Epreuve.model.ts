@@ -2,9 +2,11 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IEpreuve extends Document {
   id: string;
-  matiereId: number;
+  matiereId: string;
   annee: number;
-  universiteId?: number;
+  universiteId?: string;
+  /** Même sémantique que sur Document : optionnelle = toutes filières. */
+  filiereId?: string;
   niveau: string;
   dureeMinutes: number;
   avecCorrige: boolean;
@@ -12,6 +14,7 @@ export interface IEpreuve extends Document {
   urlCorrigePdf?: string;
   vues: number;
   telechargements: number;
+  noteMoyenne: number;
   actif: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -20,7 +23,8 @@ export interface IEpreuve extends Document {
 const epreuveSchema = new Schema<IEpreuve>(
   {
     matiereId: {
-      type: Number,
+      type: String,
+      ref: 'Matiere',
       required: true,
     },
     annee: {
@@ -28,7 +32,12 @@ const epreuveSchema = new Schema<IEpreuve>(
       required: true,
     },
     universiteId: {
-      type: Number,
+      type: String,
+      ref: 'Universite',
+    },
+    filiereId: {
+      type: String,
+      ref: 'Filiere',
     },
     niveau: {
       type: String,
@@ -54,6 +63,10 @@ const epreuveSchema = new Schema<IEpreuve>(
       default: 0,
     },
     telechargements: {
+      type: Number,
+      default: 0,
+    },
+    noteMoyenne: {
       type: Number,
       default: 0,
     },

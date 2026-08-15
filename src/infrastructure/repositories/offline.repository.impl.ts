@@ -1,22 +1,21 @@
 import { OfflineDownload } from '../../models/index';
 import { IOfflineRepository } from '../../modules/offline/domain/offline.repository.interface';
-import { ConflictError, NotFoundError } from '../../shared/errors/index';
 
 export class OfflineRepository implements IOfflineRepository {
+  // Marquer/démarquer un document hors ligne est idempotent : le client rejoue
+  // ces appels depuis sa file de synchronisation au retour du réseau, et un
+  // même document peut être téléchargé depuis deux appareils. Renvoyer 409 ou
+  // 404 sur un rejeu bloquerait l'opération en file indéfiniment.
   async addDownload(userId: string, documentId: string): Promise<any> {
-    try {
-      return await OfflineDownload.create({ userId, documentId });
-    } catch (error: any) {
-      if (error.code === 11000) {
-        throw new ConflictError('Document déjà téléchargé');
-      }
-      throw error;
-    }
+    return await OfflineDownload.findOneAndUpdate(
+      { userId, documentId },
+      { $setOnInsert: { userId, documentId } },
+      { upsert: true, new: true },
+    ).exec();
   }
 
   async removeDownload(userId: string, documentId: string): Promise<void> {
-    const download = await OfflineDownload.findOneAndDelete({ userId, documentId }).exec();
-    if (!download) throw new NotFoundError('Téléchargement');
+    await OfflineDownload.findOneAndDelete({ userId, documentId }).exec();
   }
 
   async listUserDownloads(userId: string, options: any): Promise<{ downloads: any[]; total: number }> {

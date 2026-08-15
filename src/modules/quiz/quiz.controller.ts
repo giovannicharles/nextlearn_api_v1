@@ -52,8 +52,8 @@ export class QuizController {
     const userId = req.user?.id;
     if (!userId) throw new Error('Unauthorized');
     const id = String(req.params.id);
-    const { answers } = req.body;
-    const result = await this.quizService.submitQuiz(userId, id, answers);
+    const { answers, dureeSecondes } = req.body;
+    const result = await this.quizService.submitQuiz(userId, id, answers, dureeSecondes ?? 0);
     successResponse(res, result, 201);
   }
 

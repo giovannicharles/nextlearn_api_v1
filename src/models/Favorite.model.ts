@@ -16,6 +16,7 @@ const favoriteSchema = new Schema<IFavorite>(
     documentId: {
       type: String,
       required: true,
+      ref: 'Document',
     },
   },
   {

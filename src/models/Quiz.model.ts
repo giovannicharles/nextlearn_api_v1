@@ -3,7 +3,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IQuiz extends Document {
   id: string;
   documentId: string;
-  matiereId: number;
+  matiereId: string;
   titre: string;
   dureeSecondes: number;
   actif: boolean;
@@ -18,7 +18,8 @@ const quizSchema = new Schema<IQuiz>(
       required: true,
     },
     matiereId: {
-      type: Number,
+      type: String,
+      ref: 'Matiere',
       required: true,
     },
     titre: {

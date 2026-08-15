@@ -48,6 +48,9 @@ const envSchema = z.object({
 
   // Upload
   MAX_FILE_SIZE: z.string().default('52428800').transform(Number),
+
+  // Mobile app deep link base (for email links)
+  MOBILE_APP_URL: z.string().default('https://app.nextlearn.cm'),
 });
 
 const validateEnv = () => {
@@ -94,6 +97,7 @@ const validateEnv = () => {
         RATE_LIMIT_MAX_REQUESTS: 100,
         OTP_RATE_LIMIT_MAX: 5,
         MAX_FILE_SIZE: 52428800,
+        MOBILE_APP_URL: process.env.MOBILE_APP_URL || 'https://app.nextlearn.cm',
       };
     }
     throw error;

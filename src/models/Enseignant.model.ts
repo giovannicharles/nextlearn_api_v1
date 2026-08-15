@@ -4,7 +4,8 @@ export interface IEnseignant extends Document {
   id: string;
   nom: string;
   email?: string;
-  universiteId?: number;
+  universiteId?: string;
+  actif: boolean;
 }
 
 const enseignantSchema = new Schema<IEnseignant>(
@@ -18,7 +19,12 @@ const enseignantSchema = new Schema<IEnseignant>(
       type: String,
     },
     universiteId: {
-      type: Number,
+      type: String,
+      ref: 'Universite',
+    },
+    actif: {
+      type: Boolean,
+      default: true,
     },
   },
   {

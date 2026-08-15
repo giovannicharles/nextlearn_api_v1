@@ -4,24 +4,37 @@ import env from '../../config/env';
 
 if (env.SENDGRID_API_KEY) {
   sgMail.setApiKey(env.SENDGRID_API_KEY);
+  console.log('[SendGrid] API Key configurée (premiers caractères):', env.SENDGRID_API_KEY.substring(0, 10) + '...');
+} else {
+  console.warn('[SendGrid] SENDGRID_API_KEY non définie - emails non envoyés');
 }
 
 export class SendGridMailerService implements MailerService {
   async sendEmail(options: any): Promise<void> {
     if (!env.SENDGRID_API_KEY) {
+      console.log(`[EMAIL LOG] SENDGRID_API_KEY non définie - Email non envoyé`);
       console.log(`[EMAIL LOG] To: ${options.to}, Subject: ${options.subject}`);
       return;
     }
 
+    console.log(`[SendGrid] Préparation envoi email à: ${options.to}`);
+    console.log(`[SendGrid] From: noreply@nextlearn.cm`);
+    console.log(`[SendGrid] Subject: ${options.subject}`);
+
     try {
-      await sgMail.send({
+      const result = await sgMail.send({
         to: options.to,
         from: 'noreply@nextlearn.cm',
         subject: options.subject,
         html: options.html,
         text: options.text,
       });
+      console.log(`[SendGrid] Email envoyé avec succès. Message ID:`, result[0]?.headers?.['x-message-id']);
     } catch (error) {
+      console.error(`[SendGrid] Erreur lors de l'envoi:`, error);
+      if (error instanceof Error && 'response' in error) {
+        console.error(`[SendGrid] Response body:`, JSON.stringify((error as any).response?.body, null, 2));
+      }
       throw new Error(`SendGrid error: ${error instanceof Error ? error.message : error}`);
     }
   }

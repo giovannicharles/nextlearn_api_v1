@@ -1,12 +1,17 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { authGuard, adminGuard } from '../../middleware/auth.guard';
+import { authGuard, adminGuard, permissionGuard } from '../../middleware/auth.guard';
 import { DocumentController } from '../documents/document.controller';
 import { EpreuveController } from '../epreuves/epreuve.controller';
 import { QuizController } from '../quiz/quiz.controller';
 import { ReferencesController } from '../references/references.controller';
 import { UserController } from '../users/user.controller';
+import { NotificationController } from '../notifications/notification.controller';
+import { AdminContentController } from './admin-content.controller';
+import { AdminContentService } from './admin-content.service';
 import { invalidateCache } from '../../middleware/cache.middleware';
+import { activityLogService } from './activity-log.service';
+import { Document as DocumentModel } from '../../models/index';
 import env from '../../config/env';
 
 const upload = multer({
@@ -27,11 +32,26 @@ export const createAdminRoutes = (
   quizController: QuizController,
   referencesController: ReferencesController,
   userController: UserController,
+  notificationController: NotificationController,
 ): Router => {
   const router = Router();
 
-  // All admin routes require auth + admin role
+  // All admin routes require auth + admin:access permission
   router.use(authGuard, adminGuard);
+
+  const contentService = new AdminContentService();
+  const contentController = new AdminContentController(contentService);
+
+  // ==================== Dashboard ====================
+  router.get('/dashboard/stats', permissionGuard('admin:dashboard'), (req, res) => userController.adminGetStats(req as any, res));
+  router.get('/dashboard/content-overview', permissionGuard('admin:dashboard'), (req, res) => contentController.contentOverview(req as any, res));
+
+  // ==================== Reports ====================
+  router.get('/reports', permissionGuard('admin:dashboard'), (req, res) => userController.adminGetReports(req as any, res));
+
+  // ==================== Activities ====================
+  router.get('/activities/stats', permissionGuard('admin:dashboard'), (req, res) => userController.adminGetActivityStats(req as any, res));
+  router.get('/activities', permissionGuard('admin:dashboard'), (req, res) => userController.adminListActivities(req as any, res));
 
   // ==================== Documents ====================
   /**
@@ -60,9 +80,26 @@ export const createAdminRoutes = (
    *       201:
    *         description: Document créé
    */
-  router.post('/documents', upload.single('file'), async (req, res) => {
+  router.get('/documents', permissionGuard('document:read'), (req, res) => contentController.listDocuments(req as any, res));
+  router.get('/documents/:id', permissionGuard('document:read'), (req, res) => contentController.getDocument(req as any, res));
+  router.patch('/documents/:id/toggle-active', permissionGuard('document:update'), async (req, res) => {
+    await contentController.toggleDocumentActive(req as any, res);
+    await invalidateCache('docs:*');
+  });
+  router.post('/documents/bulk', permissionGuard('document:update'), async (req, res) => {
+    await contentController.bulkDocumentAction(req as any, res);
+    await invalidateCache('docs:*');
+  });
+
+  router.post('/documents', permissionGuard('document:create'), upload.single('file'), async (req, res) => {
     await documentController.createDocument(req, res);
     await invalidateCache('docs:*');
+    await activityLogService.log(
+      'DOCUMENT_CREATED',
+      await activityLogService.resolveActor((req as any).user.id),
+      { type: 'document', id: '', name: req.body?.titre },
+      req.ip
+    );
   });
 
   /**
@@ -82,9 +119,19 @@ export const createAdminRoutes = (
    *       200:
    *         description: Document mis à jour
    */
-  router.put('/documents/:id', async (req, res) => {
+  // upload.single('file') indispensable : l'admin envoie un multipart/form-data
+  // (le formulaire permet de remplacer le PDF). Sans ce parseur, req.body était
+  // vide → findByIdAndUpdate(id, {}) → modification silencieusement ignorée
+  // alors que l'API répondait 200 et que l'UI affichait « Document modifié ».
+  router.put('/documents/:id', permissionGuard('document:update'), upload.single('file'), async (req, res) => {
     await documentController.updateDocument(req, res);
     await invalidateCache('docs:*');
+    await activityLogService.log(
+      'DOCUMENT_UPDATED',
+      await activityLogService.resolveActor((req as any).user.id),
+      { type: 'document', id: String(req.params.id), name: req.body?.titre },
+      req.ip
+    );
   });
 
   /**
@@ -104,9 +151,16 @@ export const createAdminRoutes = (
    *       200:
    *         description: Document supprimé
    */
-  router.delete('/documents/:id', async (req, res) => {
+  router.delete('/documents/:id', permissionGuard('document:delete'), async (req, res) => {
+    const doc = await DocumentModel.findById(req.params.id).select('titre').lean();
     await documentController.deleteDocument(req, res);
     await invalidateCache('docs:*');
+    await activityLogService.log(
+      'DOCUMENT_DELETED',
+      await activityLogService.resolveActor((req as any).user.id),
+      { type: 'document', id: String(req.params.id), name: doc?.titre },
+      req.ip
+    );
   });
 
   // ==================== Epreuves ====================
@@ -122,7 +176,18 @@ export const createAdminRoutes = (
    *       201:
    *         description: Épreuve créée
    */
-  router.post('/epreuves', upload.fields([
+  router.get('/epreuves', permissionGuard('epreuve:read'), (req, res) => contentController.listEpreuves(req as any, res));
+  router.get('/epreuves/:id', permissionGuard('epreuve:read'), (req, res) => contentController.getEpreuve(req as any, res));
+  router.patch('/epreuves/:id/toggle-active', permissionGuard('epreuve:update'), async (req, res) => {
+    await contentController.toggleEpreuveActive(req as any, res);
+    await invalidateCache('epreuves:*');
+  });
+  router.post('/epreuves/bulk', permissionGuard('epreuve:update'), async (req, res) => {
+    await contentController.bulkEpreuveAction(req as any, res);
+    await invalidateCache('epreuves:*');
+  });
+
+  router.post('/epreuves', permissionGuard('epreuve:create'), upload.fields([
     { name: 'epreuve', maxCount: 1 },
     { name: 'corrige', maxCount: 1 },
   ]), async (req, res) => {
@@ -147,7 +212,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Épreuve mise à jour
    */
-  router.put('/epreuves/:id', async (req, res) => {
+  router.put('/epreuves/:id', permissionGuard('epreuve:update'), async (req, res) => {
     await epreuveController.updateEpreuve(req, res);
     await invalidateCache('epreuves:*');
   });
@@ -169,7 +234,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Épreuve supprimée
    */
-  router.delete('/epreuves/:id', async (req, res) => {
+  router.delete('/epreuves/:id', permissionGuard('epreuve:delete'), async (req, res) => {
     await epreuveController.deleteEpreuve(req, res);
     await invalidateCache('epreuves:*');
   });
@@ -187,7 +252,15 @@ export const createAdminRoutes = (
    *       201:
    *         description: Quiz créé
    */
-  router.post('/quiz', (req, res) => quizController.createQuiz(req, res));
+  router.get('/quiz', permissionGuard('quiz:read'), (req, res) => contentController.listQuizzes(req as any, res));
+  router.get('/quiz/:id', permissionGuard('quiz:read'), (req, res) => contentController.getQuiz(req as any, res));
+  router.get('/quiz/:id/full', permissionGuard('quiz:read'), (req, res) => contentController.getQuizWithQuestions(req as any, res));
+  router.patch('/quiz/:id/toggle-active', permissionGuard('quiz:update'), (req, res) => contentController.toggleQuizActive(req as any, res));
+  router.post('/quiz/bulk', permissionGuard('quiz:update'), (req, res) => contentController.bulkQuizAction(req as any, res));
+  router.get('/quiz/:quizId/questions', permissionGuard('quiz:read'), (req, res) => contentController.listQuestions(req as any, res));
+  router.put('/quiz/questions/:id', permissionGuard('quiz:update'), (req, res) => contentController.updateQuestion(req as any, res));
+
+  router.post('/quiz', permissionGuard('quiz:create'), (req, res) => quizController.createQuiz(req, res));
 
   /**
    * @swagger
@@ -206,7 +279,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Quiz mis à jour
    */
-  router.put('/quiz/:id', (req, res) => quizController.updateQuiz(req, res));
+  router.put('/quiz/:id', permissionGuard('quiz:update'), (req, res) => quizController.updateQuiz(req, res));
 
   /**
    * @swagger
@@ -225,7 +298,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Quiz supprimé
    */
-  router.delete('/quiz/:id', (req, res) => quizController.deleteQuiz(req, res));
+  router.delete('/quiz/:id', permissionGuard('quiz:delete'), (req, res) => quizController.deleteQuiz(req, res));
 
   /**
    * @swagger
@@ -239,7 +312,7 @@ export const createAdminRoutes = (
    *       201:
    *         description: Question ajoutée
    */
-  router.post('/quiz/questions', (req, res) => quizController.addQuestion(req, res));
+  router.post('/quiz/questions', permissionGuard('quiz:create'), (req, res) => quizController.addQuestion(req, res));
 
   /**
    * @swagger
@@ -258,7 +331,13 @@ export const createAdminRoutes = (
    *       200:
    *         description: Question supprimée
    */
-  router.delete('/quiz/questions/:id', (req, res) => quizController.deleteQuestion(req, res));
+  router.delete('/quiz/questions/:id', permissionGuard('quiz:delete'), (req, res) => quizController.deleteQuestion(req, res));
+
+  // ==================== Enseignants ====================
+  router.get('/enseignants', permissionGuard('reference:read'), (req, res) => contentController.listEnseignants(req as any, res));
+  router.post('/enseignants', permissionGuard('reference:create'), (req, res) => contentController.createEnseignant(req as any, res));
+  router.put('/enseignants/:id', permissionGuard('reference:update'), (req, res) => contentController.updateEnseignant(req as any, res));
+  router.delete('/enseignants/:id', permissionGuard('reference:delete'), (req, res) => contentController.deleteEnseignant(req as any, res));
 
   // ==================== References ====================
   /**
@@ -273,7 +352,7 @@ export const createAdminRoutes = (
    *       201:
    *         description: Université créée
    */
-  router.post('/references/universites', async (req, res) => {
+  router.post('/references/universites', permissionGuard('reference:create'), async (req, res) => {
     await referencesController.createUniversite(req, res);
     await invalidateCache('ref:*');
   });
@@ -295,7 +374,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Université mise à jour
    */
-  router.put('/references/universites/:id', async (req, res) => {
+  router.put('/references/universites/:id', permissionGuard('reference:update'), async (req, res) => {
     await referencesController.updateUniversite(req, res);
     await invalidateCache('ref:*');
   });
@@ -317,7 +396,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Université supprimée
    */
-  router.delete('/references/universites/:id', async (req, res) => {
+  router.delete('/references/universites/:id', permissionGuard('reference:delete'), async (req, res) => {
     await referencesController.deleteUniversite(req, res);
     await invalidateCache('ref:*');
   });
@@ -334,7 +413,7 @@ export const createAdminRoutes = (
    *       201:
    *         description: Filière créée
    */
-  router.post('/references/filieres', async (req, res) => {
+  router.post('/references/filieres', permissionGuard('reference:create'), async (req, res) => {
     await referencesController.createFiliere(req, res);
     await invalidateCache('ref:*');
   });
@@ -356,7 +435,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Filière mise à jour
    */
-  router.put('/references/filieres/:id', async (req, res) => {
+  router.put('/references/filieres/:id', permissionGuard('reference:update'), async (req, res) => {
     await referencesController.updateFiliere(req, res);
     await invalidateCache('ref:*');
   });
@@ -378,7 +457,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Filière supprimée
    */
-  router.delete('/references/filieres/:id', async (req, res) => {
+  router.delete('/references/filieres/:id', permissionGuard('reference:delete'), async (req, res) => {
     await referencesController.deleteFiliere(req, res);
     await invalidateCache('ref:*');
   });
@@ -395,7 +474,7 @@ export const createAdminRoutes = (
    *       201:
    *         description: Matière créée
    */
-  router.post('/references/matieres', async (req, res) => {
+  router.post('/references/matieres', permissionGuard('reference:create'), async (req, res) => {
     await referencesController.createMatiere(req, res);
     await invalidateCache('ref:*');
   });
@@ -417,7 +496,7 @@ export const createAdminRoutes = (
    *       200:
    *         description: Matière mise à jour
    */
-  router.put('/references/matieres/:id', async (req, res) => {
+  router.put('/references/matieres/:id', permissionGuard('reference:update'), async (req, res) => {
     await referencesController.updateMatiere(req, res);
     await invalidateCache('ref:*');
   });
@@ -439,25 +518,27 @@ export const createAdminRoutes = (
    *       200:
    *         description: Matière supprimée
    */
-  router.delete('/references/matieres/:id', async (req, res) => {
+  router.delete('/references/matieres/:id', permissionGuard('reference:delete'), async (req, res) => {
     await referencesController.deleteMatiere(req, res);
     await invalidateCache('ref:*');
   });
 
   // ==================== Users ====================
-  /**
-   * @swagger
-   * /api/admin/users:
-   *   get:
-   *     summary: Liste des utilisateurs (admin)
-   *     tags: [Admin]
-   *     security:
-   *       - bearerAuth: []
-   *     responses:
-   *       200:
-   *         description: Liste des utilisateurs
-   */
-  router.get('/users', (req, res) => userController.listUsers(req, res));
+  router.get('/users', permissionGuard('user:read'), (req, res) => userController.adminListUsers(req as any, res));
+  router.post('/users', permissionGuard('user:create'), (req, res) => userController.adminCreateUser(req as any, res));
+  router.get('/users/:id', permissionGuard('user:read'), (req, res) => userController.adminGetUserDetail(req as any, res));
+  router.put('/users/:id', permissionGuard('user:update'), (req, res) => userController.adminUpdateUser(req as any, res));
+  router.put('/users/:id/role', permissionGuard('user:role:change'), (req, res) => userController.adminUpdateUserRole(req as any, res));
+  router.post('/users/:id/suspend', permissionGuard('user:suspend'), (req, res) => userController.adminSuspendUser(req as any, res));
+  router.post('/users/:id/ban', permissionGuard('user:suspend'), (req, res) => userController.adminBanUser(req as any, res));
+  router.post('/users/:id/activate', permissionGuard('user:suspend'), (req, res) => userController.adminActivateUser(req as any, res));
+  router.post('/users/:id/premium', permissionGuard('user:update'), (req, res) => userController.adminTogglePremium(req as any, res));
+  router.post('/users/bulk', permissionGuard('user:suspend'), (req, res) => userController.adminBulkAction(req as any, res));
+  router.delete('/users/:id', permissionGuard('user:delete'), (req, res) => userController.adminDeleteUser(req as any, res));
+
+  // ==================== Notifications ====================
+  router.get('/notifications', permissionGuard('notification:read'), (req, res) => notificationController.adminListAll(req as any, res));
+  router.post('/notifications/broadcast', permissionGuard('notification:send'), (req, res) => notificationController.adminBroadcast(req as any, res));
 
   return router;
 };

@@ -1,4 +1,4 @@
-import { IUniversite, IFiliere, IMatiere } from '../../../models/index';
+import { IUniversite, IFiliere, IMatiere, IEnseignant } from '../../../models/index';
 
 export interface IReferencesRepository {
   // Universites
@@ -8,14 +8,20 @@ export interface IReferencesRepository {
   deleteUniversite(id: string): Promise<void>;
   
   // Filieres
-  listFilieres(): Promise<IFiliere[]>;
+  listFilieres(universiteId?: string, cycle?: string): Promise<IFiliere[]>;
   createFiliere(data: Partial<IFiliere>): Promise<IFiliere>;
   updateFiliere(id: string, data: Partial<IFiliere>): Promise<IFiliere>;
   deleteFiliere(id: string): Promise<void>;
   
   // Matieres
-  listMatieres(): Promise<IMatiere[]>;
+  listMatieres(filiereId?: string, niveau?: string): Promise<IMatiere[]>;
   createMatiere(data: Partial<IMatiere>): Promise<IMatiere>;
   updateMatiere(id: string, data: Partial<IMatiere>): Promise<IMatiere>;
   deleteMatiere(id: string): Promise<void>;
+
+  // Enseignants
+  listEnseignants(): Promise<IEnseignant[]>;
+  createEnseignant(data: Partial<IEnseignant>): Promise<IEnseignant>;
+  updateEnseignant(id: string, data: Partial<IEnseignant>): Promise<IEnseignant>;
+  deleteEnseignant(id: string): Promise<void>;
 }

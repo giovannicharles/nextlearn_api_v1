@@ -10,7 +10,9 @@
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "lint": "eslint src --ext .ts",
-    "seed": "tsx src/seeds/seed-references.ts"
+    "seed": "tsx src/seeds/seed-demo.ts",
+    "seed:academic": "tsx src/seeds/seed-academic.ts",
+    "seed:enseignants-matieres": "tsx src/seeds/seed-enseignants-matieres.ts"
   },
   "keywords": [],
   "author": "",
@@ -36,6 +38,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^8.0.5",
     "pdf-parse": "^2.4.5",
+    "pdfkit": "^0.19.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "zod": "^3.23.8"
@@ -51,6 +54,7 @@
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^6.4.16",
     "@types/pdf-parse": "^1.1.4",
+    "@types/pdfkit": "^0.17.6",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.7",
     "@typescript-eslint/eslint-plugin": "^8.0.0",

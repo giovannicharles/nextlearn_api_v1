@@ -11,9 +11,16 @@ export interface IDocument extends MongooseDocument {
   titre: string;
   description: string;
   type: DocumentType;
-  matiereId: number;
-  enseignantId?: number;
-  universiteId?: number;
+  matiereId: string;
+  enseignantId?: string;
+  universiteId?: string;
+  /**
+   * Filière visée. Optionnelle : un document sans filière est générique et
+   * concerne toutes les filières du niveau (même règle que universiteId).
+   * La filière ne peut pas être déduite de la matière — une matière comme
+   * « Mathématiques » ou « Anglais » est partagée entre plusieurs filières.
+   */
+  filiereId?: string;
   niveau: string;
   anneeAcademique: string;
   tailleMb: number;
@@ -46,14 +53,21 @@ const documentSchema = new Schema<IDocument>(
       enum: Object.values(DocumentType),
     },
     matiereId: {
-      type: Number,
+      type: String,
+      ref: 'Matiere',
       required: true,
     },
     enseignantId: {
-      type: Number,
+      type: String,
+      ref: 'Enseignant',
     },
     universiteId: {
-      type: Number,
+      type: String,
+      ref: 'Universite',
+    },
+    filiereId: {
+      type: String,
+      ref: 'Filiere',
     },
     niveau: {
       type: String,

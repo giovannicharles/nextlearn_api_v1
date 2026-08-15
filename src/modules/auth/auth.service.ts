@@ -3,22 +3,49 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { IAuthRepository } from './domain/auth.repository.interface';
 import { MailerService } from '../../infrastructure/mailer/mailer.interface';
-import { ConflictError, UnauthorizedError, NotFoundError } from '../../shared/errors/index';
+import { ConflictError, UnauthorizedError, NotFoundError, ForbiddenError } from '../../shared/errors/index';
 import { TempTokenResponse, AuthResponse, UserResponse } from './domain/auth.types';
-import { OtpCode, OtpPurpose } from '../../models/index';
+import { OtpCode, OtpPurpose, User } from '../../models/index';
 import env from '../../config/env';
+import { SettingService } from '../settings/setting.service';
+import { resolveAcademicRefs } from '../../shared/utils/academic-refs';
 
 export class AuthService {
+  private settingService: SettingService;
+
   constructor(
     private authRepository: IAuthRepository,
     private mailerService: MailerService
-  ) {}
+  ) {
+    this.settingService = new SettingService();
+  }
 
   async register(data: any): Promise<TempTokenResponse> {
+    const allowRegistration = await this.settingService.getSettingValue<boolean>('allow_self_registration', true);
+    if (!allowRegistration) {
+      throw new ForbiddenError('L\'auto-inscription est désactivée. Contactez un administrateur.');
+    }
+
+    // Le parcours « je n'ai pas d'adresse institutionnelle » lève la
+    // restriction de domaine : l'appartenance académique sera vérifiée par un
+    // humain sur pièce justificative avant tout accès au contenu.
+    if (!data.sansEmailInstitutionnel) {
+      const isAllowed = await this.settingService.isEmailDomainAllowed(data.email);
+      if (!isAllowed) {
+        const domains = await this.settingService.getEmailDomains();
+        throw new ForbiddenError(`Domaine email non autorisé. Domaines acceptés: ${domains.join(', ')}`);
+      }
+    }
+
     const existingUser = await this.authRepository.findUserByEmail(data.email);
     if (existingUser) {
       throw new ConflictError('Un compte avec cet email existe déjà');
     }
+
+    // Résolution des références académiques dès l'inscription : sans elles,
+    // le compte ne peut pas être ciblé par les notifications de nouveaux
+    // contenus. Le nom reste stocké tel quel pour l'affichage.
+    const academicRefs = await resolveAcademicRefs(data.universite, data.filiere);
 
     const user = await this.authRepository.createUser({
       email: data.email.toLowerCase(),
@@ -26,8 +53,15 @@ export class AuthService {
       prenom: data.prenom,
       universite: data.universite,
       filiere: data.filiere,
+      ...academicRefs,
       niveau: data.niveau,
+      // Sans le cycle, le niveau reste ambigu (N4 = INGE 4 ou Master 1) et
+      // l'affichage du parcours serait faux.
+      ...(data.cycle ? { cycle: data.cycle } : {}),
       isEmailVerified: false,
+      // Marque le compte comme devant fournir un justificatif. Tant que ce
+      // champ vaut autre chose que « approuve », l'accès au contenu est refusé.
+      ...(data.sansEmailInstitutionnel ? { verificationStatus: 'requis' } : {}),
     });
 
     const otp = this.generateOtp();
@@ -43,9 +77,16 @@ export class AuthService {
     });
 
     try {
+      console.log(`[EMAIL] Tentative d'envoi OTP à ${user.email} pour l'inscription`);
       await this.mailerService.sendOtpEmail(user.email, otp, `${user.nom} ${user.prenom}`);
+      console.log(`[EMAIL] OTP envoyé avec succès à ${user.email}`);
     } catch (error) {
-      console.error('Erreur envoi OTP:', error);
+      console.error('[EMAIL] Erreur envoi OTP:', error);
+      console.error('[EMAIL] Détails de l\'erreur:', error instanceof Error ? error.message : error);
+      console.error('[EMAIL] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // On lève toujours une erreur pour l'envoi d'OTP car c'est critique
+      throw new Error(`Erreur lors de l'envoi de l'email OTP: ${error instanceof Error ? error.message : error}`);
     }
 
     const tempToken = this.generateTempToken(user.id, 'register');
@@ -134,14 +175,37 @@ export class AuthService {
       throw new UnauthorizedError('Email ou PIN incorrect');
     }
 
+    if ((user as any).status === 'banned') {
+      throw new ForbiddenError('Votre compte a été banni. Contactez un administrateur.');
+    }
+    if ((user as any).status === 'suspended') {
+      const until = (user as any).suspendedUntil;
+      if (until && new Date(until) > new Date()) {
+        throw new ForbiddenError(`Votre compte est suspendu jusqu'au ${new Date(until).toLocaleDateString()}. Raison: ${(user as any).suspendedReason || 'Non spécifiée'}`);
+      }
+    }
+
+    // Verrouillage temporaire après PIN erronés répétés : protège le compte et
+    // rend surtout l'étudiant en difficulté visible côté administration.
+    const lockedUntil = (user as any).lockedUntil;
+    if (lockedUntil && new Date(lockedUntil) > new Date()) {
+      throw new ForbiddenError(
+        'Trop de tentatives incorrectes. Compte temporairement bloqué — réinitialisez votre PIN ou contactez le support.',
+      );
+    }
+
     const isValidPin = await bcrypt.compare(pin, user.pinHash);
     if (!isValidPin) {
+      await this.registerFailedPinAttempt(user.id);
       throw new UnauthorizedError('Email ou PIN incorrect');
     }
 
+    await this.clearFailedPinAttempts(user.id);
+
+    const otpExpiryMinutes = await this.settingService.getSettingValue<number>('otp_expiry_minutes', 10);
     const otp = this.generateOtp();
     const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + otpExpiryMinutes * 60 * 1000);
 
     await this.authRepository.createOtpCode({
       email: user.email,
@@ -167,6 +231,34 @@ export class AuthService {
     };
   }
 
+  /** Nombre de PIN erronés consécutifs au-delà duquel le compte est verrouillé. */
+  private static readonly MAX_PIN_ATTEMPTS = 5;
+  private static readonly PIN_LOCK_MINUTES = 30;
+
+  private async registerFailedPinAttempt(userId: string): Promise<void> {
+    const user = await User.findById(userId).select('failedPinAttempts');
+    if (!user) return;
+
+    const attempts = ((user as any).failedPinAttempts || 0) + 1;
+    const patch: Record<string, unknown> = {
+      failedPinAttempts: attempts,
+      lastFailedLoginAt: new Date(),
+    };
+
+    if (attempts >= AuthService.MAX_PIN_ATTEMPTS) {
+      patch.lockedUntil = new Date(Date.now() + AuthService.PIN_LOCK_MINUTES * 60 * 1000);
+    }
+
+    await User.updateOne({ _id: userId }, { $set: patch });
+  }
+
+  private async clearFailedPinAttempts(userId: string): Promise<void> {
+    await User.updateOne(
+      { _id: userId },
+      { $set: { failedPinAttempts: 0 }, $unset: { lockedUntil: 1 } },
+    );
+  }
+
   async verify2faLogin(tempToken: string, code: string): Promise<AuthResponse> {
     const decoded = this.verifyTempToken(tempToken);
     if (decoded.type !== 'login_2fa') {
@@ -176,6 +268,10 @@ export class AuthService {
     const user = await this.authRepository.findUserById(decoded.id);
     if (!user) {
       throw new NotFoundError('Utilisateur');
+    }
+
+    if ((user as any).status === 'banned') {
+      throw new ForbiddenError('Votre compte a été banni.');
     }
 
     const otpRecord = await this.authRepository.findValidOtpCode(user.email, OtpPurpose.LOGIN);
@@ -197,7 +293,8 @@ export class AuthService {
 
     await this.authRepository.updateOtpCodeAsUsed(otpRecord.id);
 
-    const { accessToken, refreshToken } = await this.generateTokenPair(user.id, (user as any).role);
+    const role = ((user as any).role || 'user').toLowerCase();
+    const { accessToken, refreshToken } = await this.generateTokenPair(user.id, role);
 
     await this.authRepository.revokeAllUserRefreshTokens(user.id);
     await this.authRepository.createRefreshToken({
@@ -205,6 +302,13 @@ export class AuthService {
       token: refreshToken,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
+
+    try {
+      const { User } = await import('../../models/index');
+      await User.findByIdAndUpdate(user.id, { lastLoginAt: new Date() });
+    } catch (e) {
+      // non-critical
+    }
 
     return {
       accessToken,
@@ -214,7 +318,12 @@ export class AuthService {
     };
   }
 
-  async refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }> {
+  // Le refresh token tourne à chaque appel (l'ancien est révoqué ligne 277) : il
+  // DOIT être renvoyé au client, sinon celui-ci rejoue un token mort au refresh
+  // suivant et se retrouve déconnecté (renvoyé sur /login) alors que sa session
+  // est valide. Ajout purement additif : les consommateurs qui ne lisent que
+  // accessToken/expiresIn ne sont pas impactés.
+  async refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
     const tokenRecord = await this.authRepository.findRefreshToken(refreshToken);
     if (!tokenRecord || tokenRecord.revoked) {
       throw new UnauthorizedError('Refresh token invalide ou révoqué');
@@ -237,6 +346,7 @@ export class AuthService {
 
     return {
       accessToken,
+      refreshToken: newRefreshToken,
       expiresIn: 900,
     };
   }
@@ -267,9 +377,16 @@ export class AuthService {
     });
 
     try {
+      console.log(`[EMAIL] Tentative d'envoi OTP à ${user.email} pour l'inscription`);
       await this.mailerService.sendOtpEmail(user.email, otp, `${user.nom} ${user.prenom}`);
+      console.log(`[EMAIL] OTP envoyé avec succès à ${user.email}`);
     } catch (error) {
-      console.error('Erreur envoi OTP:', error);
+      console.error('[EMAIL] Erreur envoi OTP:', error);
+      console.error('[EMAIL] Détails de l\'erreur:', error instanceof Error ? error.message : error);
+      console.error('[EMAIL] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // On lève toujours une erreur pour l'envoi d'OTP car c'est critique
+      throw new Error(`Erreur lors de l'envoi de l'email OTP: ${error instanceof Error ? error.message : error}`);
     }
 
     const newTempToken = this.generateTempToken(user.id, 'register');
@@ -301,9 +418,16 @@ export class AuthService {
     });
 
     try {
+      console.log(`[EMAIL] Tentative d'envoi OTP à ${user.email} pour l'inscription`);
       await this.mailerService.sendOtpEmail(user.email, otp, `${user.nom} ${user.prenom}`);
+      console.log(`[EMAIL] OTP envoyé avec succès à ${user.email}`);
     } catch (error) {
-      console.error('Erreur envoi OTP:', error);
+      console.error('[EMAIL] Erreur envoi OTP:', error);
+      console.error('[EMAIL] Détails de l\'erreur:', error instanceof Error ? error.message : error);
+      console.error('[EMAIL] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+      
+      // On lève toujours une erreur pour l'envoi d'OTP car c'est critique
+      throw new Error(`Erreur lors de l'envoi de l'email OTP: ${error instanceof Error ? error.message : error}`);
     }
 
     const tempToken = this.generateTempToken(user.id, 'reset_pin');
@@ -384,7 +508,7 @@ export class AuthService {
     }
   }
 
-  private async generateTokenPair(userId: string, role: string = 'USER'): Promise<{ accessToken: string; refreshToken: string }> {
+  private async generateTokenPair(userId: string, role: string = 'user'): Promise<{ accessToken: string; refreshToken: string }> {
     const accessExpiry = env.JWT_ACCESS_EXPIRES_IN || env.JWT_EXPIRES_IN || '15m';
     const refreshExpiry = env.JWT_REFRESH_EXPIRES_IN || '30d';
     const accessToken = jwt.sign({ id: userId, role }, env.JWT_SECRET, { expiresIn: accessExpiry } as any);
@@ -402,8 +526,11 @@ export class AuthService {
       filiere: user.filiere,
       niveau: user.niveau,
       langue: user.langue,
-      role: user.role || 'USER',
+      role: (user.role || 'user').toLowerCase(),
+      status: user.status || 'active',
       avatarUrl: user.avatarUrl || null,
+      isPremium: user.isPremium || false,
+      verificationStatus: (user as any).verificationStatus,
     };
   }
 }

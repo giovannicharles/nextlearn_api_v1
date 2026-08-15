@@ -5,6 +5,27 @@ import { successResponse } from '../../shared/http/response';
 export class ReferencesController {
   constructor(private referencesService: ReferencesService) {}
 
+  // Types de documents
+  async listDocumentTypes(_req: Request, res: Response): Promise<void> {
+    successResponse(res, this.referencesService.listDocumentTypes());
+  }
+
+  async listJustificatifTypes(_req: Request, res: Response): Promise<void> {
+    successResponse(res, this.referencesService.listJustificatifTypes());
+  }
+
+  async listMotifsRejet(_req: Request, res: Response): Promise<void> {
+    successResponse(res, this.referencesService.listMotifsRejet());
+  }
+
+  // ── Cascade académique ───────────────────────────────────────────────────
+
+  async listCycles(req: Request, res: Response): Promise<void> {
+    const universiteId = req.query.universiteId as string | undefined;
+    successResponse(res, await this.referencesService.listCycles(universiteId));
+  }
+
+
   // Universites
   async listUniversites(_req: Request, res: Response): Promise<void> {
     const result = await this.referencesService.listUniversites();
@@ -29,8 +50,10 @@ export class ReferencesController {
   }
 
   // Filieres
-  async listFilieres(_req: Request, res: Response): Promise<void> {
-    const result = await this.referencesService.listFilieres();
+  async listFilieres(req: Request, res: Response): Promise<void> {
+    const universiteId = req.query.universiteId as string | undefined;
+    const cycle = req.query.cycle as string | undefined;
+    const result = await this.referencesService.listFilieres(universiteId, cycle);
     successResponse(res, result);
   }
 
@@ -51,9 +74,18 @@ export class ReferencesController {
     successResponse(res, { message: 'Filière supprimée' });
   }
 
+  // Niveaux d'une filière
+  async listNiveaux(req: Request, res: Response): Promise<void> {
+    const filiereId = req.query.filiereId as string;
+    const result = await this.referencesService.listNiveaux(filiereId);
+    successResponse(res, result);
+  }
+
   // Matieres
-  async listMatieres(_req: Request, res: Response): Promise<void> {
-    const result = await this.referencesService.listMatieres();
+  async listMatieres(req: Request, res: Response): Promise<void> {
+    const filiereId = req.query.filiereId as string | undefined;
+    const niveau = req.query.niveau as string | undefined;
+    const result = await this.referencesService.listMatieres(filiereId, niveau);
     successResponse(res, result);
   }
 
@@ -72,5 +104,28 @@ export class ReferencesController {
     const id = String(req.params.id);
     await this.referencesService.deleteMatiere(id);
     successResponse(res, { message: 'Matière supprimée' });
+  }
+
+  // Enseignants
+  async listEnseignants(_req: Request, res: Response): Promise<void> {
+    const result = await this.referencesService.listEnseignants();
+    successResponse(res, result);
+  }
+
+  async createEnseignant(req: Request, res: Response): Promise<void> {
+    const result = await this.referencesService.createEnseignant(req.body);
+    successResponse(res, result, 201);
+  }
+
+  async updateEnseignant(req: Request, res: Response): Promise<void> {
+    const id = String(req.params.id);
+    const result = await this.referencesService.updateEnseignant(id, req.body);
+    successResponse(res, result);
+  }
+
+  async deleteEnseignant(req: Request, res: Response): Promise<void> {
+    const id = String(req.params.id);
+    await this.referencesService.deleteEnseignant(id);
+    successResponse(res, { message: 'Enseignant supprimé' });
   }
 }

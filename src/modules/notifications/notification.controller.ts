@@ -43,4 +43,16 @@ export class NotificationController {
     await this.notificationService.deleteNotification(id, userId);
     successResponse(res, { message: 'Notification supprimée' });
   }
+
+  async adminBroadcast(req: AuthRequest, res: Response): Promise<void> {
+    const { type, title, message, target, role, metadata } = req.body;
+    const result = await this.notificationService.broadcastNotification({ type, title, message, target, role, metadata });
+    successResponse(res, result, 201);
+  }
+
+  async adminListAll(req: AuthRequest, res: Response): Promise<void> {
+    const { page, limit } = req.query;
+    const result = await this.notificationService.adminListAllNotifications({ page: Number(page) || 1, limit: Number(limit) || 20 });
+    successResponse(res, result.data, 200, result.meta);
+  }
 }

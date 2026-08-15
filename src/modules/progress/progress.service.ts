@@ -22,11 +22,36 @@ export class ProgressService {
   }
 
   async createStudySession(userId: string, data: any) {
+    const { date, ...rest } = data ?? {};
     return await this.progressRepository.createStudySession({
       userId,
-      ...data,
-      date: new Date(),
+      ...rest,
+      date: this.resolveSessionDate(date),
     });
+  }
+
+  /**
+   * Date d'une session de lecture.
+   *
+   * Le client transmet la date réelle de lecture, indispensable pour qu'une
+   * session enregistrée hors ligne et envoyée plus tard soit comptée le bon
+   * jour dans les statistiques hebdomadaires.
+   *
+   * Elle est bornée pour ne pas devenir un vecteur de triche : jamais dans le
+   * futur, jamais au-delà de la fenêtre de rattrapage. Hors de ces bornes, ou
+   * absente, on retombe sur l'heure serveur.
+   */
+  private resolveSessionDate(raw: unknown): Date {
+    const now = new Date();
+    if (!raw) return now;
+
+    const parsed = new Date(raw as string);
+    if (Number.isNaN(parsed.getTime())) return now;
+
+    const maxBacklogMs = 7 * 24 * 60 * 60 * 1000;
+    if (parsed > now || now.getTime() - parsed.getTime() > maxBacklogMs) return now;
+
+    return parsed;
   }
 
   async listStudySessions(userId: string, options: any) {

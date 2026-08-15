@@ -2,7 +2,9 @@ import { Router } from 'express';
 import multer from 'multer';
 import { EpreuveController } from './epreuve.controller';
 import { authGuard, adminGuard } from '../../middleware/auth.guard';
+import { verifiedGuard } from '../../middleware/verified.guard';
 import { cache } from '../../middleware/cache.middleware';
+import { academicFilter } from '../../middleware/academic-filter.middleware';
 import env from '../../config/env';
 
 const upload = multer({
@@ -46,7 +48,7 @@ export const createEpreuveRoutes = (epreuveController: EpreuveController): Route
    *       200:
    *         description: Liste des épreuves
    */
-  router.get('/', cache('epreuves:list', 120), (req, res) => epreuveController.listEpreuves(req, res));
+  router.get('/', academicFilter, (req, res) => epreuveController.listEpreuves(req, res));
   /**
    * @swagger
    * /api/epreuves/{id}:
@@ -101,7 +103,7 @@ export const createEpreuveRoutes = (epreuveController: EpreuveController): Route
    *       200:
    *         description: URL signée pour téléchargement
    */
-  router.post('/:id/download', authGuard, (req, res) => epreuveController.downloadEpreuve(req, res));
+  router.post('/:id/download', authGuard, verifiedGuard, (req, res) => epreuveController.downloadEpreuve(req, res));
   /**
    * @swagger
    * /api/epreuves/{id}/signed-url:
@@ -119,7 +121,7 @@ export const createEpreuveRoutes = (epreuveController: EpreuveController): Route
    *       200:
    *         description: URL signée
    */
-  router.get('/:id/signed-url', authGuard, (req, res) => epreuveController.getSignedUrl(req, res));
+  router.get('/:id/signed-url', authGuard, verifiedGuard, (req, res) => epreuveController.getSignedUrl(req, res));
   /**
    * @swagger
    * /api/epreuves:
@@ -172,6 +174,33 @@ export const createEpreuveRoutes = (epreuveController: EpreuveController): Route
    *         description: Épreuve supprimée
    */
   router.delete('/:id', authGuard, adminGuard, (req, res) => epreuveController.deleteEpreuve(req, res));
+  /**
+   * @swagger
+   * /api/epreuves/{id}/rate:
+   *   post:
+   *     summary: Noter une épreuve (1-5)
+   *     tags: [Epreuves]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema: { type: string }
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [note]
+   *             properties:
+   *               note: { type: integer, minimum: 1, maximum: 5 }
+   *     responses:
+   *       200:
+   *         description: Note enregistrée
+   */
+  router.post('/:id/rate', authGuard, (req, res) => epreuveController.rateEpreuve(req, res));
 
   return router;
 };

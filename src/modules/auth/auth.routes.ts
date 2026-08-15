@@ -5,6 +5,13 @@ import { authGuard } from '../../middleware/auth.guard';
 export const createAuthRoutes = (authController: AuthController): Router => {
   const router = Router();
 
+  // Debug logging for all auth routes
+  router.use((req, res, next) => {
+    console.log(`[Auth Route] ${req.method} ${req.path}`);
+    console.log(`[Auth Route] Body:`, JSON.stringify(req.body));
+    next();
+  });
+
   /**
    * @swagger
    * /api/auth/register:

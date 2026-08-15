@@ -5,7 +5,7 @@ import { NotFoundError } from '../../shared/errors/index';
 export class QuizRepository implements IQuizRepository {
   // Quiz
   async findById(id: string): Promise<any | null> {
-    return await Quiz.findById(id).exec();
+    return await Quiz.findById(id).populate({ path: 'matiereId', select: 'nom' }).exec();
   }
 
   async listQuizzes(filters: any, options: any): Promise<{ quizzes: any[]; total: number }> {
@@ -17,7 +17,7 @@ export class QuizRepository implements IQuizRepository {
     if (filters.documentId) query.documentId = filters.documentId;
 
     const [quizzes, total] = await Promise.all([
-      Quiz.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      Quiz.find(query).populate({ path: 'matiereId', select: 'nom' }).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
       Quiz.countDocuments(query),
     ]);
 

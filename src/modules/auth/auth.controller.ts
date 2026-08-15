@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { registerSchema, verifyOtpSchema, setupPinSchema, loginSchema, refreshTokenSchema, resendOtpSchema, resetPinSchema, verify2faSchema, confirmResetPinSchema } from './dto/index';
 import { successResponse } from '../../shared/http/response';
+import { activityLogService } from '../admin/activity-log.service';
 
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -33,6 +34,14 @@ export class AuthController {
   async verify2faLogin(req: Request, res: Response): Promise<void> {
     const validatedData = verify2faSchema.parse(req.body);
     const result = await this.authService.verify2faLogin(validatedData.tempToken, validatedData.code);
+    if (result.user?.role === 'admin') {
+      await activityLogService.log(
+        'ADMIN_LOGIN',
+        { id: result.user.id, name: `${result.user.prenom} ${result.user.nom}`, email: result.user.email },
+        undefined,
+        req.ip
+      );
+    }
     successResponse(res, result);
   }
 

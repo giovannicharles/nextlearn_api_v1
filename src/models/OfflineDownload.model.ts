@@ -16,6 +16,7 @@ const offlineDownloadSchema = new Schema<IOfflineDownload>(
     documentId: {
       type: String,
       required: true,
+      ref: 'Document',
     },
     dateTelechargement: {
       type: Date,

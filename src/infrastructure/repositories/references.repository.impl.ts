@@ -1,4 +1,4 @@
-import { Universite, Filiere, Matiere } from '../../models/index';
+import { Universite, Filiere, Matiere, Enseignant } from '../../models/index';
 import { IReferencesRepository } from '../../modules/references/domain/references.repository.interface';
 import { NotFoundError } from '../../shared/errors/index';
 
@@ -24,8 +24,12 @@ export class ReferencesRepository implements IReferencesRepository {
   }
 
   // Filieres
-  async listFilieres(): Promise<any[]> {
-    return await Filiere.find({ actif: true }).sort({ nom: 1 }).exec();
+  // Cascade École → Cycle → Filière : les deux filtres se combinent.
+  async listFilieres(universiteId?: string, cycle?: string): Promise<any[]> {
+    const query: any = { actif: true };
+    if (universiteId) query.universiteId = universiteId;
+    if (cycle) query.cycle = cycle;
+    return await Filiere.find(query).sort({ nom: 1 }).exec();
   }
 
   async createFiliere(data: Partial<any>): Promise<any> {
@@ -44,8 +48,12 @@ export class ReferencesRepository implements IReferencesRepository {
   }
 
   // Matieres
-  async listMatieres(): Promise<any[]> {
-    return await Matiere.find({ actif: true }).sort({ nom: 1 }).exec();
+  // Cascade Filière → Niveau → Matière.
+  async listMatieres(filiereId?: string, niveau?: string): Promise<any[]> {
+    const query: any = { actif: true };
+    if (filiereId) query.filiereId = filiereId;
+    if (niveau) query.niveau = niveau;
+    return await Matiere.find(query).sort({ semestre: 1, nom: 1 }).exec();
   }
 
   async createMatiere(data: Partial<any>): Promise<any> {
@@ -61,5 +69,25 @@ export class ReferencesRepository implements IReferencesRepository {
   async deleteMatiere(id: string): Promise<void> {
     const matiere = await Matiere.findByIdAndUpdate(id, { actif: false }).exec();
     if (!matiere) throw new NotFoundError('Matière');
+  }
+
+  // Enseignants
+  async listEnseignants(): Promise<any[]> {
+    return await Enseignant.find({ actif: true }).sort({ nom: 1 }).exec();
+  }
+
+  async createEnseignant(data: Partial<any>): Promise<any> {
+    return await Enseignant.create(data);
+  }
+
+  async updateEnseignant(id: string, data: Partial<any>): Promise<any> {
+    const enseignant = await Enseignant.findByIdAndUpdate(id, data, { new: true }).exec();
+    if (!enseignant) throw new NotFoundError('Enseignant');
+    return enseignant;
+  }
+
+  async deleteEnseignant(id: string): Promise<void> {
+    const enseignant = await Enseignant.findByIdAndUpdate(id, { actif: false }).exec();
+    if (!enseignant) throw new NotFoundError('Enseignant');
   }
 }

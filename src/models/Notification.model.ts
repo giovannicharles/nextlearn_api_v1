@@ -5,6 +5,11 @@ export enum NotificationType {
   RAPPEL = 'RAPPEL',
   BADGE = 'BADGE',
   EPREUVE = 'EPREUVE',
+  INFO = 'INFO',
+  WARNING = 'WARNING',
+  ANNOUNCEMENT = 'ANNOUNCEMENT',
+  MAINTENANCE = 'MAINTENANCE',
+  VERIFICATION = 'VERIFICATION',
 }
 
 export interface INotification extends Document {

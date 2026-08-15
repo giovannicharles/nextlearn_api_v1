@@ -26,14 +26,14 @@ export class NotificationRepository implements INotificationRepository {
   async markAsRead(id: string, userId: string): Promise<void> {
     const notification = await Notification.findOneAndUpdate(
       { _id: id, userId },
-      { lu: true, dateLecture: new Date() },
+      { lu: true, readAt: new Date() },
       { new: true }
     ).exec();
     if (!notification) throw new NotFoundError('Notification');
   }
 
   async markAllAsRead(userId: string): Promise<void> {
-    await Notification.updateMany({ userId, lu: false }, { lu: true, dateLecture: new Date() }).exec();
+    await Notification.updateMany({ userId, lu: false }, { lu: true, readAt: new Date() }).exec();
   }
 
   async deleteNotification(id: string, userId: string): Promise<void> {

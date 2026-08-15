@@ -8,6 +8,11 @@ export class SmtpMailerService implements MailerService {
   constructor() {
     const smtpHost = env.SMTP_HOST || (env.SMTP_USER?.endsWith('@gmail.com') ? 'smtp.gmail.com' : undefined);
     if (smtpHost && env.SMTP_USER && env.SMTP_PASS) {
+      console.log(`[SMTP] Configuration SMTP détectée`);
+      console.log(`[SMTP] Host: ${smtpHost}`);
+      console.log(`[SMTP] Port: ${env.SMTP_PORT}`);
+      console.log(`[SMTP] User: ${env.SMTP_USER}`);
+      
       this.transporter = nodemailer.createTransport({
         host: smtpHost,
         port: env.SMTP_PORT,
@@ -17,24 +22,39 @@ export class SmtpMailerService implements MailerService {
           pass: env.SMTP_PASS,
         },
       });
+      
+      console.log(`[SMTP] Transporter SMTP créé avec succès`);
+    } else {
+      console.warn(`[SMTP] Configuration SMTP incomplète - emails non envoyés`);
+      console.warn(`[SMTP] Host: ${smtpHost || 'non défini'}`);
+      console.warn(`[SMTP] User: ${env.SMTP_USER || 'non défini'}`);
+      console.warn(`[SMTP] Pass: ${env.SMTP_PASS ? 'défini' : 'non défini'}`);
     }
   }
 
   async sendEmail(options: EmailOptions): Promise<void> {
     if (!this.transporter) {
-      console.log(`[EMAIL LOG] To: ${options.to}, Subject: ${options.subject}`);
+      console.log(`[SMTP] Transporter non configuré - Email non envoyé`);
+      console.log(`[SMTP] To: ${options.to}, Subject: ${options.subject}`);
       return;
     }
 
+    console.log(`[SMTP] Préparation envoi email à: ${options.to}`);
+    console.log(`[SMTP] From: ${env.SMTP_USER}`);
+    console.log(`[SMTP] Subject: ${options.subject}`);
+
     try {
-      await this.transporter.sendMail({
+      const result = await this.transporter.sendMail({
         from: env.SMTP_USER,
         to: options.to,
         subject: options.subject,
         html: options.html,
         text: options.text,
       });
+      console.log(`[SMTP] Email envoyé avec succès. Message ID:`, result.messageId);
     } catch (error) {
+      console.error(`[SMTP] Erreur lors de l'envoi:`, error);
+      console.error(`[SMTP] Détails de l'erreur:`, error instanceof Error ? error.message : error);
       throw new Error(`SMTP error: ${error instanceof Error ? error.message : error}`);
     }
   }

@@ -2,9 +2,16 @@ import { Document, DocumentRating } from '../../models/index';
 import { IDocumentRepository } from '../../modules/documents/domain/document.repository.interface';
 import { NotFoundError } from '../../shared/errors/index';
 
+const REF_POPULATE = [
+  { path: 'matiereId', select: 'nom' },
+  { path: 'enseignantId', select: 'nom' },
+  { path: 'universiteId', select: 'nom' },
+  { path: 'filiereId', select: 'nom' },
+];
+
 export class DocumentRepository implements IDocumentRepository {
   async findById(id: string): Promise<any | null> {
-    return await Document.findById(id).exec();
+    return await Document.findById(id).populate(REF_POPULATE).exec();
   }
 
   async listDocuments(filters: any, options: any): Promise<{ documents: any[]; total: number }> {
@@ -16,10 +23,11 @@ export class DocumentRepository implements IDocumentRepository {
     if (filters.niveau) query.niveau = filters.niveau;
     if (filters.type) query.type = filters.type;
     if (filters.universiteId) query.universiteId = filters.universiteId;
+    if (filters.filiereId) query.filiereId = filters.filiereId;
     if (filters.anneeAcademique) query.anneeAcademique = filters.anneeAcademique;
 
     const [documents, total] = await Promise.all([
-      Document.find(query).sort({ dateAjout: -1 }).skip(skip).limit(limit).exec(),
+      Document.find(query).populate(REF_POPULATE).sort({ dateAjout: -1 }).skip(skip).limit(limit).exec(),
       Document.countDocuments(query),
     ]);
 
@@ -35,6 +43,7 @@ export class DocumentRepository implements IDocumentRepository {
         { $text: { $search: query }, actif: true },
         { score: { $meta: 'textScore' } }
       )
+        .populate(REF_POPULATE)
         .sort({ score: { $meta: 'textScore' } })
         .skip(skip)
         .limit(limit)
@@ -50,7 +59,7 @@ export class DocumentRepository implements IDocumentRepository {
   }
 
   async updateDocument(id: string, data: Partial<any>): Promise<any> {
-    const document = await Document.findByIdAndUpdate(id, data, { new: true }).exec();
+    const document = await Document.findByIdAndUpdate(id, data, { new: true }).populate(REF_POPULATE).exec();
     if (!document) throw new NotFoundError('Document');
     return document;
   }
@@ -85,25 +94,26 @@ export class DocumentRepository implements IDocumentRepository {
   }
 
   async getPopular(limit: number): Promise<any[]> {
-    return await Document.find({ actif: true }).sort({ telechargements: -1 }).limit(limit).exec();
+    return await Document.find({ actif: true }).populate(REF_POPULATE).sort({ telechargements: -1 }).limit(limit).exec();
   }
 
   async getRecent(limit: number): Promise<any[]> {
-    return await Document.find({ actif: true }).sort({ dateAjout: -1 }).limit(limit).exec();
+    return await Document.find({ actif: true }).populate(REF_POPULATE).sort({ dateAjout: -1 }).limit(limit).exec();
   }
 
-  async getRecommended(universiteId: number | undefined, niveau: string | undefined, limit: number): Promise<any[]> {
+  async getRecommended(universiteId: string | undefined, niveau: string | undefined, limit: number): Promise<any[]> {
     const query: any = { actif: true };
     if (universiteId) query.universiteId = universiteId;
     if (niveau) query.niveau = niveau;
 
-    const primary = await Document.find(query).sort({ telechargements: -1 }).limit(limit).exec();
+    const primary = await Document.find(query).populate(REF_POPULATE).sort({ telechargements: -1 }).limit(limit).exec();
 
     if (primary.length >= limit) return primary;
 
     const excludeIds = primary.map((d: any) => d._id);
     const remaining = limit - primary.length;
     const fallback = await Document.find({ actif: true, _id: { $nin: excludeIds } })
+      .populate(REF_POPULATE)
       .sort({ telechargements: -1 })
       .limit(remaining)
       .exec();
