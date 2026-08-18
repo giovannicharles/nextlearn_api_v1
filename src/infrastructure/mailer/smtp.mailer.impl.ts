@@ -21,6 +21,10 @@ export class SmtpMailerService implements MailerService {
           user: env.SMTP_USER,
           pass: env.SMTP_PASS,
         },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+        tls: { timeout: 10000 },
       });
       
       console.log(`[SMTP] Transporter SMTP créé avec succès`);

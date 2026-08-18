@@ -76,18 +76,17 @@ export class AuthService {
       userId: user.id,
     });
 
-    try {
-      console.log(`[EMAIL] Tentative d'envoi OTP à ${user.email} pour l'inscription`);
-      await this.mailerService.sendOtpEmail(user.email, otp, `${user.nom} ${user.prenom}`);
-      console.log(`[EMAIL] OTP envoyé avec succès à ${user.email}`);
-    } catch (error) {
-      console.error('[EMAIL] Erreur envoi OTP:', error);
-      console.error('[EMAIL] Détails de l\'erreur:', error instanceof Error ? error.message : error);
-      console.error('[EMAIL] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
-      
-      // On lève toujours une erreur pour l'envoi d'OTP car c'est critique
-      throw new Error(`Erreur lors de l'envoi de l'email OTP: ${error instanceof Error ? error.message : error}`);
-    }
+    // Envoi non-bloquant pour éviter le timeout côté client
+    const _email = user.email;
+    const _name = `${user.nom} ${user.prenom}`;
+    const _otp = otp;
+    this.mailerService
+      .sendOtpEmail(_email, _otp, _name)
+      .then(() => console.log(`[EMAIL] OTP envoyé avec succès à ${_email}`))
+      .catch((error) => {
+        console.error('[EMAIL] Erreur envoi OTP:', error);
+        console.warn(`⚠️  Code OTP pour ${_email}: ${_otp}`);
+      });
 
     const tempToken = this.generateTempToken(user.id, 'register');
 
@@ -215,11 +214,18 @@ export class AuthService {
       userId: user.id,
     });
 
-    try {
-      await this.mailerService.sendOtpEmail(user.email, otp, `${user.nom} ${user.prenom}`);
-    } catch (error) {
-      console.error('Erreur envoi OTP 2FA:', error);
-    }
+    // Envoi de l'OTP en arrière-plan (non-bloquant) pour éviter le timeout
+    // côté client (l'app mobile a un receiveTimeout de ~20s). L'API répond
+    // immédiatement avec le tempToken, et l'email est envoyé async.
+    const userEmail = user.email;
+    const userName = `${user.nom} ${user.prenom}`;
+    const otpCode = otp;
+    this.mailerService
+      .sendOtpEmail(userEmail, otpCode, userName)
+      .catch((error) => {
+        console.error('Erreur envoi OTP 2FA:', error);
+        console.warn(`⚠️  Code OTP pour ${userEmail}: ${otpCode}`);
+      });
 
     const tempToken = this.generateTempToken(user.id, 'login_2fa');
 
@@ -376,18 +382,17 @@ export class AuthService {
       userId: user.id,
     });
 
-    try {
-      console.log(`[EMAIL] Tentative d'envoi OTP à ${user.email} pour l'inscription`);
-      await this.mailerService.sendOtpEmail(user.email, otp, `${user.nom} ${user.prenom}`);
-      console.log(`[EMAIL] OTP envoyé avec succès à ${user.email}`);
-    } catch (error) {
-      console.error('[EMAIL] Erreur envoi OTP:', error);
-      console.error('[EMAIL] Détails de l\'erreur:', error instanceof Error ? error.message : error);
-      console.error('[EMAIL] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
-      
-      // On lève toujours une erreur pour l'envoi d'OTP car c'est critique
-      throw new Error(`Erreur lors de l'envoi de l'email OTP: ${error instanceof Error ? error.message : error}`);
-    }
+    // Envoi non-bloquant pour éviter le timeout côté client
+    const _email = user.email;
+    const _name = `${user.nom} ${user.prenom}`;
+    const _otp = otp;
+    this.mailerService
+      .sendOtpEmail(_email, _otp, _name)
+      .then(() => console.log(`[EMAIL] OTP envoyé avec succès à ${_email}`))
+      .catch((error) => {
+        console.error('[EMAIL] Erreur envoi OTP:', error);
+        console.warn(`⚠️  Code OTP pour ${_email}: ${_otp}`);
+      });
 
     const newTempToken = this.generateTempToken(user.id, 'register');
 
@@ -417,18 +422,17 @@ export class AuthService {
       userId: user.id,
     });
 
-    try {
-      console.log(`[EMAIL] Tentative d'envoi OTP à ${user.email} pour l'inscription`);
-      await this.mailerService.sendOtpEmail(user.email, otp, `${user.nom} ${user.prenom}`);
-      console.log(`[EMAIL] OTP envoyé avec succès à ${user.email}`);
-    } catch (error) {
-      console.error('[EMAIL] Erreur envoi OTP:', error);
-      console.error('[EMAIL] Détails de l\'erreur:', error instanceof Error ? error.message : error);
-      console.error('[EMAIL] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
-      
-      // On lève toujours une erreur pour l'envoi d'OTP car c'est critique
-      throw new Error(`Erreur lors de l'envoi de l'email OTP: ${error instanceof Error ? error.message : error}`);
-    }
+    // Envoi non-bloquant pour éviter le timeout côté client
+    const _email = user.email;
+    const _name = `${user.nom} ${user.prenom}`;
+    const _otp = otp;
+    this.mailerService
+      .sendOtpEmail(_email, _otp, _name)
+      .then(() => console.log(`[EMAIL] OTP envoyé avec succès à ${_email}`))
+      .catch((error) => {
+        console.error('[EMAIL] Erreur envoi OTP:', error);
+        console.warn(`⚠️  Code OTP pour ${_email}: ${_otp}`);
+      });
 
     const tempToken = this.generateTempToken(user.id, 'reset_pin');
 
