@@ -1,6 +1,11 @@
 import nodemailer from 'nodemailer';
+import dns from 'node:dns';
 import { MailerService, EmailOptions } from './mailer.interface';
 import env from '../../config/env';
+
+// Forcer la résolution DNS en IPv4 pour éviter ENETUNREACH en IPv6
+// (problème courant sur Render et autres PaaS qui ne routent pas l'IPv6)
+dns.setDefaultResultOrder('ipv4first');
 
 export class SmtpMailerService implements MailerService {
   private transporter: nodemailer.Transporter | null = null;
